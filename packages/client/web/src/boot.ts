@@ -13,6 +13,7 @@ import { bootClient } from './boot-client.ts'
 import { BootPage } from './boot-page.ts'
 import { mountClient } from './mount.ts'
 import { getStaticModules } from './seed.ts'
+import { pinDocumentScroll, type ScrollPinDispose } from './scroll-pin.ts'
 import './base.css'
 
 /** Module transport hook replaced by jsdom tests. */
@@ -23,6 +24,7 @@ export class AppWebEntry {
   private readonly container: HTMLElement
   private readonly seams: BootSeams | undefined
   private readonly page: BootPage
+  private readonly unpinScroll: ScrollPinDispose
   private ctx: Context | undefined
   private modules!: ClientModuleSystem
   private manifest!: BootManifest
@@ -36,6 +38,7 @@ export class AppWebEntry {
     this.container = container
     this.seams = seams
     this.page = new BootPage(container)
+    this.unpinScroll = pinDocumentScroll()
   }
 
   /**
@@ -97,6 +100,7 @@ export class AppWebEntry {
 
   /** Dispose the client plugin tree and whichever page owns the mount point. */
   async dispose(): Promise<void> {
+    this.unpinScroll()
     const ctx = this.ctx
     this.ctx = undefined
     if (ctx !== undefined) await ctx.fiber.dispose()
