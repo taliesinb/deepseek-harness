@@ -23,7 +23,7 @@ import { SESSION_SEARCH_RESULT_LIMIT } from '../../types.ts'
 import type { SessionJob as JobView } from '../../types.ts'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import {
-  createSnapshotStore, type SnapshotStore,
+  createSnapshotStore, embedPresentation, type SnapshotStore,
 } from '@deepseek-ai/dsh-client-store'
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionEventSource } from '../contract/events.ts'
@@ -200,6 +200,12 @@ export class ClientSessions implements ISessions {
    * resurfaces when its session returns.
    */
   private readonly selection: SnapshotStore<SessionSelection>
+  /**
+   * Embedded presentation pin: the one root Session this page shows. While
+   * set, {@link open} accepts only that Session and the subagent children
+   * reached from it, so an embedded shell cannot wander to another root.
+   */
+  private readonly pinned: SessionId | undefined
 
   private readonly scopes = new Map<SessionId, ScopeRecord>()
   /** In-flight scope drops remain here after records leave `scopes`, so root disposal can await quiescence. */
@@ -226,10 +232,14 @@ export class ClientSessions implements ISessions {
       {},
       { persist: { name: 'dsh.sessions.current' } })
     const restored = this.selection.getSnapshot()
+    // An embedded page (`?embed=<id>`) is opened for one Session: that id is
+    // its initial selection, validated by the projection like a persisted one
+    // (the persisted cell is namespaced per embedded Session, so it starts empty).
+    this.pinned = embedPresentation()?.sessionId as SessionId | undefined
     this.manager = new SessionManager(
       remote,
-      restored.sessionId,
-      restored.subagentAddress,
+      this.pinned ?? restored.sessionId,
+      this.pinned === undefined ? restored.subagentAddress : undefined,
     )
     this.list = createSnapshotStore<SessionListState>({
       ids: [], byId: {}, current: undefined, phase: 'pending',
@@ -268,6 +278,10 @@ export class ClientSessions implements ISessions {
    * @param id - listed or addressed session id.
    */
   open(id: SessionId): void {
+    if (this.pinned !== undefined && id !== this.pinned && this.manager.subagentAddress(id) === undefined) {
+      console.warn(`[sessions] embedded page is pinned to ${this.pinned}; ignoring open(${id})`)
+      return
+    }
     this.manager.select(id)
   }
 

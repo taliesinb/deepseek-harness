@@ -8,4 +8,5 @@
 
 export { AppWebEntry, type BootSeams } from './boot.ts'
 export { getStaticModules } from './seed.ts'
+export { applyEmbedPresentation, EMBED_QUERY, parseEmbedPresentation } from './embed.ts'
 export { PLATFORM_MODULES, PRELOADED_CLIENT_EXTERNALS, type PlatformModule } from './platform.ts'

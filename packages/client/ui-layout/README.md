@@ -29,6 +29,10 @@ The root slot composes the sidebar, main content, and right column. The sidebar 
 
 Global panels occupy the root-scoped `main` keyed slot; `conversation` is the reserved key for the Conversation. `ctx.layout.selectPanel(id)` selects a registered panel, and `null` selects the Conversation without changing the current Session. No global panel is registered by the shipped composition.
 
+### Embedded presentation
+
+A page opened with `?embed=<sessionId>` renders one Session for a framing document. The frame reads the mode from the shared store module (`embedPresentation()`), exposes it as `ctx.layout.embedSessionId`, and draws no left column: the sidebar slot is not rendered, its grid track is zero, and the sidebar handle and `toggleSidebar()` are inert. The center, the right column, and `shell.overlay` stay, so approvals and the right dock work inside the frame. The frame marks itself `data-embedded`. Session pinning belongs to the Session Controller client, which takes the embedded id as its initial selection and refuses `open()` for another root Session.
+
 ### Theme presentation
 
 The presenter consumes resolved theme snapshots and projects them onto the document: `html { color-scheme }` for native UA chrome, `body[data-ds-dark-theme]` from the active color scheme, the theme's alias tokens and `--dsh-content-font-size` as inline variables on body, and one owned `<meta name="theme-color">` whose content follows the computed body background. Disposing the presenter removes its metadata node with its other global writes.
