@@ -255,7 +255,9 @@ export class BrowserAuth {
         }, this.secret)
         res.writeHead(303, {
           'cache-control': 'no-store',
-          'location': '/',
+          // Relative: the browser resolves it against the URL it requested, so a
+          // path-mounted shell (`/dsh/?token=…`) lands on `/dsh/`, the root on `/`.
+          'location': './',
           'referrer-policy': 'no-referrer',
           'set-cookie': sessionCookie(
             cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1000),
@@ -267,7 +269,9 @@ export class BrowserAuth {
       if (req.method === 'GET' && url.pathname === '/' && this.isAuthenticated(req)) {
         res.writeHead(303, {
           'cache-control': 'no-store',
-          'location': '/',
+          // Relative: the browser resolves it against the URL it requested, so a
+          // path-mounted shell (`/dsh/?token=…`) lands on `/dsh/`, the root on `/`.
+          'location': './',
           'referrer-policy': 'no-referrer',
         })
         res.end()

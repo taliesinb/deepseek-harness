@@ -301,11 +301,36 @@ class StreamInbox {
   }
 }
 
+/**
+ * Directory the shell document was served from (mirror of `hostBaseUrl` in
+ * client-connection, which the bundle purity gate keeps this package from
+ * importing as a value): a path-mounted shell opens its socket under the
+ * mount, the root and a Worker at the origin root, Node at an internal base.
+ */
+function hostBase(): string {
+  const global = globalThis as { document?: { baseURI?: string }; location?: { origin?: string } }
+  const origin = global.location?.origin
+  const hasOrigin = origin !== undefined && origin !== '' && origin !== 'null'
+  const documentUrl = global.document?.baseURI
+  if (hasOrigin && typeof documentUrl === 'string' && documentUrl !== '') {
+    try {
+      const directory = new URL('.', documentUrl)
+      if (directory.origin === origin) return directory.href
+    } catch {
+      // Fall through to the origin root.
+    }
+  }
+  return hasOrigin ? `${origin}/` : `${INTERNAL_BASE}/`
+}
+
 function remoteStreamUrl(): string {
-  const location = (globalThis as { location?: { origin?: string } }).location
   const transport = (globalThis as { __DSH_TRANSPORT__?: { streamBaseUrl?: string } }).__DSH_TRANSPORT__
-  const base = transport?.streamBaseUrl ?? (location?.origin !== undefined && location.origin !== 'null' ? location.origin : INTERNAL_BASE)
-  const url = new URL(REMOTE_STREAM_MUX_PATH, base)
+  // A shell-owned Host at an explicit base (desktop: the document uses a
+  // local asset origin) wins; otherwise the socket is document-relative so a
+  // path-mounted shell opens it under its mount.
+  const url = transport?.streamBaseUrl !== undefined
+    ? new URL(REMOTE_STREAM_MUX_PATH, transport.streamBaseUrl)
+    : new URL(`.${REMOTE_STREAM_MUX_PATH}`, hostBase())
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.href
 }

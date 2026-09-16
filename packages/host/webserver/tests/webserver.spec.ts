@@ -325,8 +325,10 @@ describe('real Loader composition', () => {
     const order = [
       '<head>',
       '<script>window.__Q__=1</script>',
-      '<script src="/plugins/a.js?rev=&quot;1&quot;&amp;x=&lt;y&gt;"></script>',
-      '<link rel="preload" as="script" href="/plugins/b.js?rev=&quot;2&quot;&amp;x=&lt;z&gt;">',
+      // Root-relative rows render document-relative so a path-mounted page
+      // resolves them under its mount.
+      '<script src="./plugins/a.js?rev=&quot;1&quot;&amp;x=&lt;y&gt;"></script>',
+      '<link rel="preload" as="script" href="./plugins/b.js?rev=&quot;2&quot;&amp;x=&lt;z&gt;">',
       'globalThis["__DSH_BOOT__"] = {"rev":"\\u003c/script>\\u003cb>"}',
       '<style>body{margin:0}</style>',
       '<meta name="probe">',

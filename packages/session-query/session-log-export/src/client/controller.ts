@@ -45,9 +45,25 @@ export function downloadUrl(url: string, filename: string): void {
 }
 
 /** Resolve the browser's Host base with the connection carrier's null-origin fallback. */
-function hostBase(): string {
-  const origin = (globalThis as { location?: { origin?: string } }).location?.origin
-  return origin !== undefined && origin !== 'null' ? origin : 'http://dsh.internal'
+/**
+ * Document-relative export URL (mirror of `hostUrl` in client-connection): a
+ * path-mounted shell downloads from under its mount, the root from `/api/...`.
+ */
+function exportUrl(): URL {
+  const global = globalThis as { document?: { baseURI?: string }; location?: { origin?: string } }
+  const origin = global.location?.origin
+  const hasOrigin = origin !== undefined && origin !== '' && origin !== 'null'
+  let base = hasOrigin ? `${origin}/` : 'http://dsh.internal/'
+  const documentUrl = global.document?.baseURI
+  if (hasOrigin && typeof documentUrl === 'string' && documentUrl !== '') {
+    try {
+      const directory = new URL('.', documentUrl)
+      if (directory.origin === origin) base = directory.href
+    } catch {
+      // Keep the origin root.
+    }
+  }
+  return new URL('./api/session.export', base)
 }
 
 function messageOf(error: unknown): string {
@@ -112,7 +128,7 @@ export class SessionLogDownloadController {
   private async run(sessionId: SessionId, signal: AbortSignal): Promise<void> {
     this.publish(sessionId, { open: true, status: 'downloading', error: null })
     try {
-      const url = new URL('/api/session.export', hostBase())
+      const url = exportUrl()
       url.searchParams.set('sessionId', sessionId)
       url.searchParams.set('includeDescendants', 'true')
       const response = await this.fetcher(url, { method: 'HEAD', signal })

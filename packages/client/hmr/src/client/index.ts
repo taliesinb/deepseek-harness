@@ -13,6 +13,22 @@ export const name = 'client-hmr'
 export const inject = ['modules']
 
 /**
+ * Channel URL for the served document. Document-relative (`./plugins/events`):
+ * a path-mounted shell reaches the channel under its mount, and at the root
+ * this is `/plugins/events`. Without a document (a Worker, a Node harness)
+ * the root-relative endpoint is used as-is.
+ */
+function eventsUrl(): string {
+  const documentUrl = (globalThis as { document?: { baseURI?: string } }).document?.baseURI
+  if (typeof documentUrl !== 'string' || documentUrl === '') return EVENTS_ENDPOINT
+  try {
+    return new URL(`.${EVENTS_ENDPOINT}`, documentUrl).href
+  } catch {
+    return EVENTS_ENDPOINT
+  }
+}
+
+/**
  * Forward graph snapshots and rebuilds to the page's shared serial controller.
  * @param ctx - Plugin context with the client module system.
  */
@@ -26,7 +42,7 @@ export function apply(ctx: Context): void {
   }
 
   ctx.effect(() => {
-    const source = new EventSource(EVENTS_ENDPOINT)
+    const source = new EventSource(eventsUrl())
     source.addEventListener('message', (event: MessageEvent<string>) => {
       let value: unknown
       try {

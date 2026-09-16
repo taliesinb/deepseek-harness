@@ -9,6 +9,7 @@
     "src/api-path.ts",
     "src/client/api.ts",
     "src/client/connection.ts",
+    "src/client/host-base.ts",
     "src/client/index.ts",
     "src/client/random-uuid.ts",
     "src/client/rpc.ts",

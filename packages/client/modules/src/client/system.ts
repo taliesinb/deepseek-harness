@@ -12,11 +12,21 @@ import type {
   ClientModuleSystemOptions,
 } from './manifest.ts'
 
+/**
+ * Resolve a graph row URL as the document would: a root-relative `/plugins/...`
+ * row lands under the served base, so a shell mounted at `/dsh/` fetches
+ * `/dsh/plugins/...`; absolute and protocol-relative URLs pass through.
+ */
+export function documentRelativeUrl(url: string): string {
+  const rootRelative = url.startsWith('/') && !url.startsWith('//')
+  return new URL(rootRelative ? `.${url}` : url, document.baseURI).href
+}
+
 /** Default bundle-load hook: same-origin external classic script. */
 const defaultLoadBundle = (url: string): Promise<void> => new Promise((resolve, reject) => {
   const el = document.createElement('script')
   el.async = true
-  el.src = url
+  el.src = documentRelativeUrl(url)
   el.addEventListener('load', () => {
     el.remove()
     resolve()
