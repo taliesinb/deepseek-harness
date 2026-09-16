@@ -51,12 +51,29 @@ export interface DirectoryFlowOwnerProps {
   onError: (message: string) => void
 }
 
+/** Owner share of the browser's additive seats: the column's live width state. */
+export interface WorkspaceBrowserSeatOwnerProps {
+  /** True while the sidebar is expanded (the seats render nothing in the collapsed rail). */
+  wide: boolean
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /**
+     * Additive seat beside the "Add workspace" button in the region header:
+     * one icon button per entry (a plugin adding another kind of workspace).
+     */
+    'sidebar.workspaces.headerAction': { kind: 'list'; scope: 'root'; owner: WorkspaceBrowserSeatOwnerProps }
+    /**
+     * Additive seat below the Workspace tree: extra groups a plugin renders in
+     * the same list (workspaces that are not local directories). Rendered only
+     * while the sidebar is wide and no search is active.
+     */
+    'sidebar.workspaces.extra': { kind: 'list'; scope: 'root'; owner: WorkspaceBrowserSeatOwnerProps }
   }
 }
 
@@ -141,7 +158,7 @@ export type WorkspaceBrowserInjected = {
 /** Full browser props: shell owner share + viewing store + injected actions + the locale seat. */
 export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
-  & PropsRenderSlots<'sidebar.workspaces.directoryFlow'>
+  & PropsRenderSlots<'sidebar.workspaces.directoryFlow' | 'sidebar.workspaces.headerAction' | 'sidebar.workspaces.extra'>
   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & PropsHooks<WorkspaceBrowserInjected['hooks']>
