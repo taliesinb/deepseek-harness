@@ -19,7 +19,7 @@ import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { computeColumns, RIGHTBAR_DEFAULT_RATIO, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
+import { computeColumns, RIGHTBAR_DEFAULT_RATIO, SIDEBAR_ABSENT, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -157,18 +157,23 @@ export function AppFrame({
     }
   }, [actions])
 
+  // Embedded presentation: one Session for a framing document, so the left
+  // column (navigation) does not exist — no rail, no handle, no toggle.
+  const embedded = layoutInfo.embedSessionId !== undefined
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
-  const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
-  const sidebarPreference = sidebarCollapsed
-    ? 0
-    : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
+  const sidebarCollapsed = embedded || (narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0)
+  const sidebarPreference = embedded
+    ? SIDEBAR_ABSENT
+    : sidebarCollapsed
+      ? 0
+      : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
   const rightbarPreference = layoutInfo.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO
   // Desktop reopen controls occupy the macOS session header or Windows caption row.
   const collapsedWidth = document.documentElement.dataset.platform === 'darwin'
     || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
-  const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
+  const normal = computeColumns(viewport, !embedded && !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
   const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
   const colsRef = useRef(cols)
   colsRef.current = cols
@@ -193,10 +198,10 @@ export function AppFrame({
     actions.setRightbar(rightbarBase.current - dx)
   }, [actions])
   const productTitle = process.env.DSH_CLIENT_TITLE ?? t('brand.localBuild')
-  const sidebar = useMemo(() => renderSlot('sidebar', {
+  const sidebar = useMemo(() => embedded ? null : renderSlot('sidebar', {
     collapsed: sidebarCollapsed,
     width: cols.sidebar,
-  }), [renderSlot, sidebarCollapsed, cols.sidebar])
+  }), [renderSlot, embedded, sidebarCollapsed, cols.sidebar])
   const main = useMemo(() => (
     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
   ), [usePanelInfo, renderSlot])
@@ -213,6 +218,7 @@ export function AppFrame({
           `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`,
       }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
+      data-embedded={embedded || undefined}
       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
       data-rightbar-fullscreen={layoutInfo.rightbarFullscreen || undefined}
       data-rightbar-instant={layoutInfo.rightbarInstant || undefined}
@@ -223,9 +229,12 @@ export function AppFrame({
         useSessions={useSessions}
         usePanelInfo={usePanelInfo}
       />
-      <div className={css.sidebarCol}>
-        {sidebar}
-      </div>
+      {/* The embedded frame has no left column: its grid track is zero and the column is not drawn. */}
+      {embedded ? <div /> : (
+        <div className={css.sidebarCol}>
+          {sidebar}
+        </div>
+      )}
       <>
         <CenterColumn>{main}</CenterColumn>
         <RightbarColumn>
@@ -236,7 +245,7 @@ export function AppFrame({
         {overlays}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!embedded && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}

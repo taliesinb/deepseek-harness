@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** Frame interactions with a real store and explicitly driven browser measurements. */
 import type { GlobalStandardProps, RenderOpts } from '@deepseek-ai/dsh-client-ui-slots'
+import { setEmbedPresentation } from '@deepseek-ai/dsh-client-store'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
@@ -171,6 +172,7 @@ afterEach(() => {
   } finally {
     for (const restore of restoreProperties.splice(0).reverse()) restore()
     document.title = originalTitle
+    setEmbedPresentation(undefined)
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
@@ -240,6 +242,26 @@ describe('AppFrame', () => {
     expect(sidebarOwner()).toEqual({ collapsed: true, width: 56 })
     expect(getByTestId('sidebar-content')).toBeTruthy()
     expect(frame.querySelector('[data-side="sidebar"]')).toBeNull()
+  })
+
+  it('renders no left column, sidebar outlet, handle, or toggle while embedded', () => {
+    setEmbedPresentation({ sessionId: 's-test' })
+    const { frame, instance, slotCalls, getByTestId, queryByTestId } = mountFrame()
+    expect(frame.dataset['embedded']).toBe('true')
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(slotCalls.some(call => call.key === 'sidebar')).toBe(false)
+    expect(queryByTestId('sidebar-content')).toBeNull()
+    expect(frame.querySelector('[data-side="sidebar"]')).toBeNull()
+    // The Session content and the frame-wide layers stay: approvals and the right dock live there.
+    expect(getByTestId('main-content')).toBeTruthy()
+    expect(getByTestId('rightbar-content')).toBeTruthy()
+    expect(getByTestId('shell.overlay-content')).toBeTruthy()
+    act(() => { instance.actions.toggleSidebar() })
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(instance.getSnapshot().layoutInfo.embedSessionId).toBe('s-test')
+    // A narrow frame does not reintroduce a rail either.
+    resize(800)
+    expect(tracks(frame)).toEqual([0, 0])
   })
 
   it('switches only the keyed main outlet when the active panel changes', () => {

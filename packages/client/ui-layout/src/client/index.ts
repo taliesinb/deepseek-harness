@@ -133,7 +133,8 @@ export function apply(ctx: ClientContext): void {
     const instance = handle.create()
     const store: typeof handle = { ...handle, create: () => instance }
     const layout = new LayoutController(instance.actions, id =>
-      ctx.slots.entries('main').some(entry => entry.options.key === id))
+      ctx.slots.entries('main').some(entry => entry.options.key === id),
+    instance.getSnapshot().layoutInfo.embedSessionId)
     const retainMainPanels = (): void => {
       instance.actions.retainMainPanels(ctx.slots.entries('main').flatMap(entry =>
         entry.options.key === undefined ? [] : [entry.options.key]))
