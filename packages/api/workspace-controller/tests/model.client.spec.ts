@@ -5,6 +5,7 @@ import {
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -126,6 +127,11 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   }
 
   async *follow(_signal?: AbortSignal): AsyncGenerator<WorkspaceFollowFrame> {}
+
+  list(): Promise<RemoteResult<WorkspaceBaseline>> {
+    this.record('list', undefined)
+    return Promise.resolve(remoteOk({ items: [], archivedSessionIds: [] }))
+  }
 
   private record(method: string, request: unknown): void {
     this.calls.push({ method, request })

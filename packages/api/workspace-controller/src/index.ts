@@ -8,6 +8,7 @@ import { WorkspaceFeed } from './feed.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -128,6 +129,17 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote({ mode: 'stream' })
   follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
     return this.feed.follow(signal)
+  }
+
+  /**
+   * The complete Workspace baseline as one unary read, for callers that
+   * cannot hold a stream open (another Host mirroring this one's Workspaces).
+   * Same value a `follow` generation opens with.
+   * @returns every Workspace in registry order plus the archived Session ids.
+   */
+  @Remote('list')
+  list(): WorkspaceBaseline {
+    return this.feed.baseline()
   }
 }
 
