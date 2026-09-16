@@ -170,7 +170,9 @@ export function apply(ctx: Context): void {
   }
 
   ctx.effect(() => {
-    const source = new EventSource(EVENTS_ENDPOINT)
+    // Document-relative (`./plugins/events`): a path-mounted shell reaches the
+    // channel under its mount, and at the root this is `/plugins/events`.
+    const source = new EventSource(new URL(`.${EVENTS_ENDPOINT}`, document.baseURI))
     source.addEventListener('message', (event: MessageEvent<string>) => {
       let value: unknown
       try {

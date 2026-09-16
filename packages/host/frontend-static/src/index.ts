@@ -113,14 +113,13 @@ export async function serveStatic(
 export function apply(ctx: Context, config: Config): void {
   const distIndex = config.distIndex
   const distRoot = dirname(distIndex)
-  // The dist is built with a relative base so the same files mount under any
-  // static directory; served pages also answer deep SPA-fallback paths, where
-  // relative asset URLs would resolve under the request directory, so the
-  // served form anchors them at the site root ahead of every URL-bearing tag.
-  const renderIndex = async (): Promise<string> => {
-    const body = ctx.webServer.renderIndex(await readFile(distIndex, 'utf8'))
-    return body.replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="/">`)
-  }
+  // The dist is built with a relative base and the index is only ever served
+  // at a directory (`/`) or as `/index.html`, so its asset URLs resolve under
+  // the directory the page was served from. No `<base href="/">` is injected:
+  // anchoring at the site root would break a path-mounting reverse proxy that
+  // strips its prefix (`https://node/dsh/` → `/`), where the document, not the
+  // origin, is the only place the mount is still visible.
+  const renderIndex = async (): Promise<string> => ctx.webServer.renderIndex(await readFile(distIndex, 'utf8'))
   ctx.effect(() => ctx.webServer.registerFallback(async (req, res) => {
     // Non-GET/HEAD without a matching named route is 405 (fallback-only
     // semantics: named routes own their method handling).

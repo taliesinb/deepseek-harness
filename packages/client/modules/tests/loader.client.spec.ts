@@ -549,7 +549,9 @@ describe('default transport seam', () => {
       const script = nodes[0]
       if (!(script instanceof HTMLScriptElement)) throw new Error('expected script node')
       expect(script.async).toBe(true)
-      expect(script.getAttribute('src')).toBe(APPLICATION_URL)
+      // Root-relative row URLs resolve against the document, so a shell served
+      // from a mounted directory fetches its bundles under that mount.
+      expect(script.getAttribute('src')).toBe(new URL(`.${APPLICATION_URL}`, document.baseURI).href)
       queueMicrotask(() => {
         win.__ModuleLoader__?.load({ id: 'dee', factory: () => ({ marker: 'via-script' }) })
         script.dispatchEvent(new Event('load'))

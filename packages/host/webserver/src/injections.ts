@@ -39,6 +39,17 @@ function escapeHtmlAttribute(value: string): string {
     .replaceAll('>', '&gt;')
 }
 
+/**
+ * Render an external script URL document-relative: a root-relative row
+ * (`/plugins/...`) becomes `./plugins/...`, so the served page resolves it
+ * under whatever directory it was served from — the site root, or the mount
+ * of a path-stripping reverse proxy. Absolute and protocol-relative URLs are
+ * kept verbatim.
+ */
+function documentRelative(src: string): string {
+  return src.startsWith('/') && !src.startsWith('//') ? `.${src}` : src
+}
+
 function assertNever(row: never): never {
   throw new Error(`webserver: unknown index injection row ${JSON.stringify(row)}`)
 }
@@ -58,9 +69,9 @@ function renderRow(row: IndexInjection): { placement: IndexInjectionPlacement; m
     case 'script':
       return { placement: row.placement, markup: `<script>${row.text}</script>` }
     case 'script-src':
-      return { placement: row.placement, markup: `<script src="${escapeHtmlAttribute(row.src)}"></script>` }
+      return { placement: row.placement, markup: `<script src="${escapeHtmlAttribute(documentRelative(row.src))}"></script>` }
     case 'script-preload':
-      return { placement: 'head', markup: `<link rel="preload" as="script" href="${escapeHtmlAttribute(row.src)}">` }
+      return { placement: 'head', markup: `<link rel="preload" as="script" href="${escapeHtmlAttribute(documentRelative(row.src))}">` }
     case 'style':
       return { placement: 'head', markup: `<style>${row.text}</style>` }
     case 'html':
