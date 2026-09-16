@@ -106,7 +106,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: 60px;
+  /* Collapse ceiling for the search animation (headerActionsHidden → 0). Wide
+     enough for the two shipped buttons plus headerAction seat entries. */
+  max-width: 160px;
   opacity: 1;
   overflow: hidden;
   visibility: visible;
