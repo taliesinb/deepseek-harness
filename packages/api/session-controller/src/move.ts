@@ -12,6 +12,8 @@
  * Same-cwd subagent children of a moved Session move with it.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-jobs'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
@@ -22,8 +24,8 @@ import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { basename } from 'node:path'
 import type { ApiSessionAgentController } from './agent.ts'
 import type {
-  SessionMoveDestination, SessionMoveManyRequest, SessionMoveManyValue, SessionMoveRequest, SessionMoveValue,
-  SessionMoveSkip,
+  SessionMoveBlocker, SessionMoveDestination, SessionMoveManyRequest, SessionMoveManyValue, SessionMoveRequest,
+  SessionMoveSkip, SessionMoveValue,
 } from './types.ts'
 
 /** Message source recorded on the relocation notice. */
@@ -57,6 +59,17 @@ export function sessionMoveNoticeText(
 /** Recovers the origin a pending move notice named (see {@link sessionMoveNoticeText}). */
 const MOVE_NOTICE_FROM = /workspace was changed from `([^`]*)` \(([^)]*)\) to `/u
 
+/** One line naming the blockers, for messages and logs. */
+export function describeBlockers(blockers: readonly SessionMoveBlocker[]): string {
+  return blockers.map((blocker) => {
+    switch (blocker.kind) {
+      case 'turn': return 'a turn is running'
+      case 'jobs': return `${String(blocker.labels.length)} background job${blocker.labels.length === 1 ? '' : 's'} running (${blocker.labels.slice(0, 3).join(', ')}${blocker.labels.length > 3 ? ', …' : ''})`
+      case 'subagents': return `${String(blocker.count)} subagent${blocker.count === 1 ? '' : 's'} loaded${blocker.running > 0 ? ` (${String(blocker.running)} running)` : ''}`
+    }
+  }).join('; ')
+}
+
 /** Host-side move orchestration behind `session.move` / `session.moveMany`. */
 export class SessionMoveController {
   /**
@@ -77,9 +90,10 @@ export class SessionMoveController {
     const destination = await this.resolveDestination(request.destination)
     const outcome = await this.moveOne(request.sessionId, destination, request)
     if (outcome.skipped !== undefined) {
-      throw new RemoteError(`session/move-${outcome.skipped.reason}`, outcome.skipped.message, {
-        sessionId: request.sessionId,
-      })
+      if (outcome.skipped.reason === 'live') {
+        throw new RemoteError('session/move-live', outcome.skipped.message, { sessionId: request.sessionId, blockers: outcome.skipped.blockers ?? [] })
+      }
+      throw new RemoteError(`session/move-${outcome.skipped.reason}`, outcome.skipped.message, { sessionId: request.sessionId })
     }
     return { sessionId: request.sessionId, workspaceId: destination.id, moved: outcome.moved }
   }
@@ -190,8 +204,9 @@ export class SessionMoveController {
     // caller to decide (`stopLive`), because retiring it aborts that turn.
     const resident = this.ctx.agents.get(sessionId)
     if (resident !== undefined || this.ctx.sessions.get(sessionId) !== undefined) {
-      if (resident?.status === 'running' && policy.stopLive !== true) {
-        return { skipped: { sessionId, reason: 'live', message: `session "${sessionId}" is running a turn; stop it first or move with stopLive` } }
+      const blockers = resident === undefined ? [] : this.blockersOf(resident)
+      if (blockers.length > 0 && policy.stopLive !== true) {
+        return { skipped: { sessionId, reason: 'live', message: `session "${sessionId}": ${describeBlockers(blockers)}; stop it first or move with stopLive`, blockers } }
       }
       const retired = await this.agents.retire(sessionId)
       if (!retired) {
@@ -264,6 +279,28 @@ export class SessionMoveController {
     return snapshots
       .map(snapshot => snapshot.header)
       .filter(header => header.origin === 'subagent' && header.parentSession === parent && header.cwd === cwd)
+  }
+
+  /**
+   * What retiring this resident Agent would interrupt: an in-flight turn, its
+   * running background jobs, subagents it owns. Empty means the Agent is
+   * merely loaded and can be retired without anyone noticing.
+   */
+  private blockersOf(agent: Agent): SessionMoveBlocker[] {
+    const blockers: SessionMoveBlocker[] = []
+    if (agent.status === 'running') blockers.push({ kind: 'turn' })
+    const jobs = this.ctx.get('jobs')
+    if (jobs !== undefined) {
+      const labels = jobs.list(agent)
+        .filter(job => job.status === 'running' || job.status === 'stopping')
+        .map(job => job.label)
+      if (labels.length > 0) blockers.push({ kind: 'jobs', labels })
+    }
+    const children = this.ctx.agents.list().filter(candidate => candidate !== agent && this.ctx.agents.isOwnedBy(candidate.id, agent))
+    if (children.length > 0) {
+      blockers.push({ kind: 'subagents', count: children.length, running: children.filter(child => child.status === 'running').length })
+    }
+    return blockers
   }
 
   /**

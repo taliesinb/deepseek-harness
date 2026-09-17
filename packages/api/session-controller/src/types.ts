@@ -195,7 +195,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
     /** Move refused: the Session's Agent is running a turn (stop it, or pass `stopLive`). */
-    'session/move-live': { readonly sessionId: SessionId }
+    'session/move-live': { readonly sessionId: SessionId; readonly blockers: readonly SessionMoveBlocker[] }
     /** Move refused: no such stored Session. */
     'session/move-missing': { readonly sessionId: SessionId }
     /** Move refused: already in the destination Workspace. */
@@ -319,10 +319,11 @@ export interface SessionMoveRequest {
   readonly sessionId: SessionId
   readonly destination: SessionMoveDestination
   /**
-   * Also move a Session whose Agent is mid-turn, aborting that turn (it
-   * resumes cold in the new Workspace). An idle resident Agent is always
-   * retired silently; without this flag a running one is refused
-   * (`session/move-live`).
+   * Also move a Session whose Agent has work in flight — a turn, background
+   * jobs, live subagents — interrupting it (the Session resumes cold in the
+   * new Workspace). A resident Agent with nothing in flight is always retired
+   * silently; without this flag one with blockers is refused
+   * (`session/move-live`, details carry the blockers).
    */
   readonly stopLive?: boolean
   /** Append the relocation notice the Agent reads on its next step; default true. */
@@ -337,11 +338,25 @@ export interface SessionMoveValue {
   readonly moved: readonly SessionId[]
 }
 
+/**
+ * One reason a resident Agent cannot simply be retired for a move: work that
+ * retiring would interrupt. `stopLive` overrides them all.
+ */
+export type SessionMoveBlocker =
+  /** The Agent is mid-turn (a model request or tool call in flight). */
+  | { readonly kind: 'turn' }
+  /** Background jobs the Agent started are still running (killed on retire). */
+  | { readonly kind: 'jobs'; readonly labels: readonly string[] }
+  /** Subagents this Agent owns are still loaded (torn down on retire). */
+  | { readonly kind: 'subagents'; readonly count: number; readonly running: number }
+
 /** Why one Session of a batch did not move. */
 export interface SessionMoveSkip {
   readonly sessionId: SessionId
   readonly reason: 'live' | 'missing' | 'same-workspace' | 'error'
   readonly message: string
+  /** For `live`: the specific work a forced move would interrupt. */
+  readonly blockers?: readonly SessionMoveBlocker[]
 }
 
 /** Move several Sessions to one Workspace. */

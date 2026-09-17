@@ -60,15 +60,21 @@ async function harness() {
     },
     forgetSessionHeader: vi.fn(),
   } as never)
-  const live = new Map<string, unknown>()
-  ctx.provide('agents', { get: (id: string) => live.get(id) } as never)
+  const live = new Map<string, { id: string; status: string; owner?: string }>()
+  const jobs = new Map<string, { status: string; label: string }[]>()
+  ctx.provide('agents', {
+    get: (id: string) => live.get(id),
+    list: () => [...live.values()],
+    isOwnedBy: (id: string, owner: { id: string }) => live.get(id)?.owner === owner.id,
+  } as never)
   ctx.provide('sessions', { get: (id: string) => live.get(id) } as never)
+  ctx.provide('jobs', { list: (agent: { id: string }) => jobs.get(agent.id) ?? [] } as never)
   const emitted: unknown[] = []
   const originalEmit = ctx.emit.bind(ctx)
   ctx.emit = ((...args: unknown[]) => { emitted.push(args); return (originalEmit as (...a: unknown[]) => unknown)(...args) }) as never
   const retire = vi.fn(async (id: string) => { live.delete(id); return true })
   const controller = new SessionMoveController(ctx, { retire } as never)
-  return { ctx, a, b, c, live, retire, controller, emitted }
+  return { ctx, a, b, c, live, jobs, retire, controller, emitted }
 }
 
 function header(id: string, cwd: string, extra: Partial<SessionHeader> = {}): SessionHeader {
@@ -150,7 +156,7 @@ describe('SessionMoveController', () => {
     expect(retire).toHaveBeenCalledWith('idle')
     retire.mockClear()
     await expect(controller.move({ sessionId: SessionId('live'), destination: { workspaceId: b.id as never } }))
-      .rejects.toMatchObject({ code: 'session/move-live' })
+      .rejects.toMatchObject({ code: 'session/move-live', details: { blockers: [{ kind: 'turn' }] } })
     expect(retire).not.toHaveBeenCalled()
 
     const batch = await controller.moveMany({ sessionIds: [SessionId('live'), SessionId('cold')], destination: { workspaceId: b.id as never } })
@@ -165,6 +171,29 @@ describe('SessionMoveController', () => {
     expect(retire).toHaveBeenCalledWith('live')
     expect(moved.moved).toEqual(['live'])
     expect(b.sessionIds).toEqual(['idle', 'cold', 'live'])
+  })
+
+  it('names background jobs and owned subagents as blockers even when the agent is idle', async () => {
+    const { ctx, a, b, live, jobs, retire, controller } = await harness()
+    await store(ctx, header('busy', a.path), EVENTS)
+    a.sessionIds.push('busy')
+    live.set('busy', { id: 'busy', status: 'idle' })
+    jobs.set('busy', [{ status: 'running', label: 'pnpm test' }, { status: 'completed', label: 'done one' }])
+    live.set('child-1', { id: 'child-1', status: 'running', owner: 'busy' })
+    live.set('child-2', { id: 'child-2', status: 'idle', owner: 'busy' })
+    await expect(controller.move({ sessionId: SessionId('busy'), destination: { workspaceId: b.id as never } }))
+      .rejects.toMatchObject({
+        code: 'session/move-live',
+        details: { blockers: [{ kind: 'jobs', labels: ['pnpm test'] }, { kind: 'subagents', count: 2, running: 1 }] },
+      })
+    expect(retire).not.toHaveBeenCalled()
+    const batch = await controller.moveMany({ sessionIds: [SessionId('busy')], destination: { workspaceId: b.id as never } })
+    expect(batch.skipped[0]).toMatchObject({ reason: 'live', blockers: [{ kind: 'jobs' }, { kind: 'subagents' }] })
+    expect(batch.skipped[0]!.message).toContain('1 background job running (pnpm test)')
+    // Forced: retired and moved.
+    const forced = await controller.move({ sessionId: SessionId('busy'), destination: { workspaceId: b.id as never }, stopLive: true })
+    expect(forced.moved).toEqual(['busy'])
+    expect(retire).toHaveBeenCalledWith('busy')
   })
 
   it('registers a directory destination and reports same-workspace / missing', async () => {
