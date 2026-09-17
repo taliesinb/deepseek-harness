@@ -194,7 +194,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
-    /** Move refused: the Session's Agent is resident (stop it, or pass `stopLive`). */
+    /** Move refused: the Session's Agent is running a turn (stop it, or pass `stopLive`). */
     'session/move-live': { readonly sessionId: SessionId }
     /** Move refused: no such stored Session. */
     'session/move-missing': { readonly sessionId: SessionId }
@@ -318,7 +318,12 @@ export type SessionMoveDestination =
 export interface SessionMoveRequest {
   readonly sessionId: SessionId
   readonly destination: SessionMoveDestination
-  /** Retire a resident Agent first (it resumes cold in the new Workspace); default refuses live Sessions. */
+  /**
+   * Also move a Session whose Agent is mid-turn, aborting that turn (it
+   * resumes cold in the new Workspace). An idle resident Agent is always
+   * retired silently; without this flag a running one is refused
+   * (`session/move-live`).
+   */
   readonly stopLive?: boolean
   /** Append the relocation notice the Agent reads on its next step; default true. */
   readonly notify?: boolean
