@@ -7,17 +7,45 @@
   },
   "files": [
     "src/archive.ts",
-    "src/index.ts"
+    "src/index.ts",
+    "src/import.ts"
   ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../attachment/attachment" },
-    { "path": "../../util/brand" },
-    { "path": "../../core/session" },
-    { "path": "../../interaction/commands" },
-    { "path": "../../session/session-format" },
-    { "path": "../../session/session-persistence" },
-    { "path": "../session-query" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../interaction/commands"
+    },
+    {
+      "path": "../../session/session-format"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../session-query"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../../session/session-format-catalog"
+    }
   ]
 }

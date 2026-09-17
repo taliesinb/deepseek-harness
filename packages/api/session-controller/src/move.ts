@@ -55,6 +55,9 @@ export function sessionMoveNoticeText(
     + `\`${to.title}\` (${to.path}).${clause} Earlier file references may need to be re-read from the new location.</system-reminder>`
 }
 
+/** Recovers the origin a pending move notice named (see {@link sessionMoveNoticeText}). */
+const MOVE_NOTICE_FROM = /workspace was changed from `([^`]*)` \(([^)]*)\) to `/u
+
 /** Host-side move orchestration behind `session.move` / `session.moveMany`. */
 export class SessionMoveController {
   /**
@@ -193,16 +196,23 @@ export class SessionMoveController {
         return { skipped: { sessionId, reason: 'live', message: `session "${sessionId}" is owned by another component and cannot be stopped here` } }
       }
     }
-    const sandboxMode = await this.lastSandboxMode(sessionId)
+    const cold = await this.readCold(sessionId)
+    // Successive moves before the Agent runs again replace the pending notice
+    // rather than stacking one per hop: the Agent needs "from where it last
+    // ran, to where it is now", not the itinerary — so the replaced notice's
+    // origin carries forward as the `from`.
+    const pendingIndex = cold.pendingMoveNoticeIndex
+    const noticeFrom = cold.pendingMoveFrom ?? fromLabel
     const notice = policy.notify === false
       ? []
       : [{
         type: 'agent/inbox/spliced' as const,
         data: {
           target: 'next-step' as const,
-          start: 0,
+          start: pendingIndex ?? 0,
+          ...(pendingIndex === undefined ? {} : { removedCount: cold.pendingMoveNoticeRun }),
           inserted: [createUserMessage({
-            content: [{ type: 'text' as const, text: sessionMoveNoticeText(fromLabel, toLabel, sandboxMode) }],
+            content: [{ type: 'text' as const, text: sessionMoveNoticeText(noticeFrom, toLabel, cold.sandboxMode) }],
             source: { kind: 'plugin' as const, plugin: SESSION_MOVE_NOTICE_PLUGIN },
           })],
         },
@@ -254,19 +264,50 @@ export class SessionMoveController {
       .filter(header => header.origin === 'subagent' && header.parentSession === parent && header.cwd === cwd)
   }
 
-  /** The Session's last recorded `sandbox/mode`, read cold. */
-  private async lastSandboxMode(sessionId: SessionId): Promise<string | undefined> {
+  /**
+   * Cold facts a move needs from the log: the last recorded `sandbox/mode`
+   * and, in the pending next-step inbox, the index of an earlier move notice.
+   */
+  private async readCold(sessionId: SessionId): Promise<{
+    sandboxMode: string | undefined
+    pendingMoveNoticeIndex: number | undefined
+    /** How many consecutive move notices sit at that index (all replaced together). */
+    pendingMoveNoticeRun: number
+    /** Origin named by the pending move notice, when one exists. */
+    pendingMoveFrom: { title: string; path: string } | undefined
+  }> {
     try {
       const handle = await this.ctx.sessionPersistence.open(sessionId, 'read')
       try {
         const { events } = await handle.read()
-        const last = (events as readonly { type: string; data: unknown }[]).findLast(event => event.type === 'sandbox/mode')
-        return last === undefined ? undefined : (last.data as { mode?: string }).mode
+        let sandboxMode: string | undefined
+        let pending: { source?: { kind?: string; plugin?: string }; content?: { type: string; text?: string }[] }[] = []
+        for (const event of events as readonly { type: string; data: unknown }[]) {
+          if (event.type === 'sandbox/mode') sandboxMode = (event.data as { mode?: string }).mode
+          if (event.type !== 'agent/inbox/spliced') continue
+          const splice = event.data as { target: string; start: number; removedCount?: number; inserted: typeof pending }
+          if (splice.target !== 'next-step') continue
+          pending = pending.toSpliced(splice.start, splice.removedCount ?? 0, ...splice.inserted)
+        }
+        const isMoveNotice = (message: (typeof pending)[number]): boolean =>
+          message.source?.kind === 'plugin' && message.source.plugin === SESSION_MOVE_NOTICE_PLUGIN
+        const index = pending.findIndex(isMoveNotice)
+        let run = 0
+        while (index !== -1 && index + run < pending.length && isMoveNotice(pending[index + run] as (typeof pending)[number])) run += 1
+        // The earliest pending notice names where the Agent actually last ran.
+        const text = index === -1 ? undefined : pending[index]?.content?.find(block => block.type === 'text')?.text
+        const origin = text === undefined ? undefined : MOVE_NOTICE_FROM.exec(text)
+        return {
+          sandboxMode,
+          pendingMoveNoticeIndex: index === -1 ? undefined : index,
+          pendingMoveNoticeRun: run,
+          pendingMoveFrom: origin?.[1] === undefined || origin[2] === undefined ? undefined : { title: origin[1], path: origin[2] },
+        }
       } finally {
         await handle.close()
       }
     } catch {
-      return undefined
+      return { sandboxMode: undefined, pendingMoveNoticeIndex: undefined, pendingMoveNoticeRun: 0, pendingMoveFrom: undefined }
     }
   }
 }
