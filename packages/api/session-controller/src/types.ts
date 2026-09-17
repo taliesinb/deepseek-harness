@@ -195,6 +195,18 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
+    /** Move refused: the Session's Agent is resident (stop it, or pass `stopLive`). */
+    'session/move-live': { readonly sessionId: SessionId }
+    /** Move refused: no such stored Session. */
+    'session/move-missing': { readonly sessionId: SessionId }
+    /** Move refused: already in the destination Workspace. */
+    'session/move-same-workspace': { readonly sessionId: SessionId }
+    /** Move failed after validation; message carries the storage error. */
+    'session/move-error': { readonly sessionId: SessionId }
+    /** The mounted session storage cannot relocate sessions. */
+    'session/move-unsupported': Record<never, never>
+    /** The destination directory could not be registered as a Workspace. */
+    'workspace/create-failed': { readonly path: string }
     'agent-preset/conflict': {
       readonly sessionId: SessionId
       readonly requestedPreset: string
@@ -296,6 +308,51 @@ export interface SessionRenameRequest {
 export interface SessionRenameValue {
   readonly title: string
   readonly seq: number
+}
+
+/** Where a moved Session goes: an existing Workspace, or a directory registered as one on the way. */
+export type SessionMoveDestination =
+  | { readonly workspaceId: WorkspaceId }
+  | { readonly path: string; readonly title?: string }
+
+/** Move one Session (and its same-cwd subagent children) to another Workspace. */
+export interface SessionMoveRequest {
+  readonly sessionId: SessionId
+  readonly destination: SessionMoveDestination
+  /** Retire a resident Agent first (it resumes cold in the new Workspace); default refuses live Sessions. */
+  readonly stopLive?: boolean
+  /** Append the relocation notice the Agent reads on its next step; default true. */
+  readonly notify?: boolean
+}
+
+/** Result of one move. */
+export interface SessionMoveValue {
+  readonly sessionId: SessionId
+  readonly workspaceId: WorkspaceId
+  /** Every Session that changed Workspace, children included. */
+  readonly moved: readonly SessionId[]
+}
+
+/** Why one Session of a batch did not move. */
+export interface SessionMoveSkip {
+  readonly sessionId: SessionId
+  readonly reason: 'live' | 'missing' | 'same-workspace' | 'error'
+  readonly message: string
+}
+
+/** Move several Sessions to one Workspace. */
+export interface SessionMoveManyRequest {
+  readonly sessionIds: readonly SessionId[]
+  readonly destination: SessionMoveDestination
+  readonly stopLive?: boolean
+  readonly notify?: boolean
+}
+
+/** Result of a batch move: skips are reported, not thrown. */
+export interface SessionMoveManyValue {
+  readonly workspaceId: WorkspaceId
+  readonly moved: readonly SessionId[]
+  readonly skipped: readonly SessionMoveSkip[]
 }
 
 /** Session fork request. */

@@ -304,6 +304,19 @@ export class WorkspaceRegistry extends Service {
     return undefined
   }
 
+  /**
+   * Forget the cached stored header of one session so the next membership
+   * check re-reads it from persistence. Stored headers are immutable except
+   * for a relocation (`sessionPersistence.relocate`), whose caller invokes
+   * this before re-attaching the moved session elsewhere.
+   * @param id - the relocated session.
+   */
+  forgetSessionHeader(id: SessionId): void {
+    this.headers.delete(id)
+    this.sessionPaths.delete(id)
+    this.invalidSessionPaths.delete(id)
+  }
+
   private async createCanonical(canonical: string, title?: string): Promise<WorkspaceEntity> {
     for (const entity of this.entities.values()) {
       if (entity.path === canonical) return entity

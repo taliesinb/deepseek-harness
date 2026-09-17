@@ -143,7 +143,7 @@ export class ApiSessionList {
     return items
   }
 
-  private summarizeCold(header: SessionHeader): SessionSummary {
+  summarizeCold(header: SessionHeader): SessionSummary {
     const projections = this.projectionsFor(header, undefined)
     const metadata = projections?.values.sessionListMetadata
     return {
