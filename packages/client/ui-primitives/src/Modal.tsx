@@ -13,6 +13,8 @@ interface ModalBaseProps {
   children?: ReactNode
   footer?: ReactNode
   className?: string
+  /** Dialog card width in CSS px (default 380); still capped at the viewport. */
+  width?: number | undefined
   contentClassName?: string
 }
 
@@ -36,7 +38,7 @@ type ModalProps = ModalBaseProps & (
  * @returns null when closed; otherwise the overlay tree.
  */
 export function Modal({
-  open, onClose, title, closeLabel, description, children, footer, className, contentClassName, headless = false,
+  open, onClose, title, closeLabel, description, children, footer, className, contentClassName, headless = false, width,
 }: ModalProps) {
   useEffect(() => {
     if (!open) return
@@ -54,6 +56,7 @@ export function Modal({
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
       <div
         className={clsx(css.dialog, className)}
+        style={width === undefined ? undefined : { width: `min(${String(width)}px, 100%)` }}
         role="dialog"
         aria-modal="true"
         aria-label={title}

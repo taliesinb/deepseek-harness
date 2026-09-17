@@ -555,12 +555,13 @@
 }
 
 .moveDestinationPath {
-  flex: none;
-  max-width: 45%;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--dsw-alias-label-tertiary);
 }
 
