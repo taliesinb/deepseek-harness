@@ -604,6 +604,12 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
+.moveBlockers {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* A foreign session drag hovering a workspace group: the whole group is the target. */
 .workspaceDropInto {
   border-radius: 8px;

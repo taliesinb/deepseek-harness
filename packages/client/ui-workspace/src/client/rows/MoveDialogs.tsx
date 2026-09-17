@@ -110,6 +110,27 @@ function Checkbox({ checked, onChange, disabled, label, description }: {
   )
 }
 
+/** The Host's account of what a forced move would interrupt (`session/move-live` details). */
+type MoveBlocker =
+  | { kind: 'turn' }
+  | { kind: 'jobs'; labels: readonly string[] }
+  | { kind: 'subagents'; count: number; running: number }
+
+function blockersOf(details: unknown): readonly MoveBlocker[] {
+  const list = (details as { blockers?: unknown } | undefined)?.blockers
+  return Array.isArray(list) ? list as MoveBlocker[] : [{ kind: 'turn' }]
+}
+
+function blockerLabel(blocker: MoveBlocker, t: Translate): string {
+  switch (blocker.kind) {
+    case 'turn': return t('move.blocker.turn')
+    case 'jobs': return t('move.blocker.jobs', { n: String(blocker.labels.length), labels: blocker.labels.slice(0, 3).join(', ') + (blocker.labels.length > 3 ? ', …' : '') })
+    case 'subagents': return blocker.running > 0
+      ? t('move.blocker.subagentsRunning', { n: String(blocker.count), running: String(blocker.running) })
+      : t('move.blocker.subagents', { n: String(blocker.count) })
+  }
+}
+
 function failureMessage(result: RemoteResult<unknown>): string | null {
   return result.ok ? null : `${result.error.code}: ${result.error.message}`
 }
@@ -127,14 +148,15 @@ export function MoveSessionDialog({ target, workspaces, api, flow, t, onClose, o
 }) {
   const [destinationId, setDestinationId] = useState<WorkspaceId | undefined>(undefined)
   const [stopLive, setStopLive] = useState(false)
-  const [liveRefused, setLiveRefused] = useState(false)
+  const [blockers, setBlockers] = useState<readonly MoveBlocker[] | null>(null)
+  const liveRefused = blockers !== null
   const [notify, setNotify] = useState(true)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     setDestinationId(target?.destinationId)
     setStopLive(false)
-    setLiveRefused(false)
+    setBlockers(null)
     setNotify(true)
     setPending(false)
     setError(null)
@@ -159,7 +181,7 @@ export function MoveSessionDialog({ target, workspaces, api, flow, t, onClose, o
       return
     }
     if (result.error.code === 'session/move-live') {
-      setLiveRefused(true)
+      setBlockers(blockersOf(result.error.details))
       return
     }
     setError(failureMessage(result))
@@ -187,8 +209,13 @@ export function MoveSessionDialog({ target, workspaces, api, flow, t, onClose, o
         {sameWorkspace && <div className={css.moveHint}>{t('move.destination.same')}</div>}
         {liveRefused && (
           <>
+            <div className={css.moveHint}>
+              {t('move.live.blockers')}
+              <ul className={css.moveBlockers}>
+                {blockers.map((blocker, index) => <li key={index}>{blockerLabel(blocker, t)}</li>)}
+              </ul>
+            </div>
             <Checkbox checked={stopLive} onChange={setStopLive} disabled={pending} label={t('move.stopLive')} description={t('move.stopLive.desc')} />
-            {!stopLive && <div className={css.moveHint}>{t('move.live.hint')}</div>}
           </>
         )}
         <Checkbox checked={notify} onChange={setNotify} disabled={pending} label={t('move.notify')} />
