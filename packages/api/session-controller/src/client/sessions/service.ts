@@ -226,8 +226,9 @@ export class ClientSessions implements ISessions {
    */
   constructor(
     private readonly rootCtx: Context,
-    remote: SessionRemotes,
+    private readonly remotes: SessionRemotes,
   ) {
+    const remote = remotes
     this.selection = createSnapshotStore<SessionSelection>(
       {},
       { persist: { name: 'dsh.sessions.current' } })
@@ -464,6 +465,18 @@ export class ClientSessions implements ISessions {
       if (!renamed.ok) throw new Error(`fork child rename failed: ${renamed.error.code}: ${renamed.error.message}`)
     }
     return childId
+  }
+
+  async move(opts: Parameters<ISessions['move']>[0]): ReturnType<ISessions['move']> {
+    const result = await this.remotes.session.move(opts)
+    if (result.ok) this.projectList()
+    return result
+  }
+
+  async moveMany(opts: Parameters<ISessions['moveMany']>[0]): ReturnType<ISessions['moveMany']> {
+    const result = await this.remotes.session.moveMany(opts)
+    if (result.ok) this.projectList()
+    return result
   }
 
   /**

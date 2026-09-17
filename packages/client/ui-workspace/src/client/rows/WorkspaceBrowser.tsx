@@ -20,13 +20,16 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { WorkspaceBrowserProps } from '../contract/slots.ts'
+import type { DirectoryFlowOwnerProps, WorkspaceBrowserProps } from '../contract/slots.ts'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
   deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey,
   pinCurrentBlank, reconcileManualOrder, UNGROUPED_KEY, visibleSessionIds,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
+import { MoveSessionDialog, RehomeWorkspaceDialog } from './MoveDialogs.tsx'
+import type { MenuContribution, MenuContributions } from '../navigation.ts'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -145,6 +148,27 @@ function ViewOptionsMenu({ groupBy, orderBy, onGroupPick, onOrderPick, t }: {
   )
 }
 
+/** Contributed items use a prefixed id so they cannot collide with built-in row actions. */
+const CONTRIBUTED_PREFIX = 'contrib:'
+
+/** Project contributions applicable to one row into Menu entries. */
+function contributedItems<T>(entries: readonly MenuContribution<T>[], target: T): readonly MenuEntry[] {
+  return entries
+    .filter(entry => entry.when === undefined || entry.when(target))
+    .map(entry => ({
+      id: `${CONTRIBUTED_PREFIX}${entry.id}`,
+      label: typeof entry.label === 'function' ? entry.label() : entry.label,
+      ...(entry.icon === undefined ? {} : { icon: entry.icon }),
+      ...(entry.danger === true ? { danger: true } : {}),
+    }))
+}
+
+/** Run the contribution behind one selected prefixed id. */
+function runContributed<T>(entries: readonly MenuContribution<T>[], id: string, target: T): void {
+  if (!id.startsWith(CONTRIBUTED_PREFIX)) return
+  entries.find(entry => entry.id === id.slice(CONTRIBUTED_PREFIX.length))?.run(target)
+}
+
 /** In-flight root-row drag: source identity plus the current insert marker. */
 interface DragState {
   /** Workspace id, or {@link UNGROUPED_KEY} for the browser-local loose-session account. */
@@ -193,6 +217,14 @@ type SessionTreeProps = Pick<
   onRenameRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the browser-owned delete-confirmation dialog for a real Workspace group. */
   onDeleteRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
+  /** Open the browser-owned rehome dialog for a real Workspace group. */
+  onRehomeRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
+  /** Open the browser-owned session move dialog (optionally with a preselected destination). */
+  onSessionMove: (sessionId: SessionNode['id'], currentTitle: string, destinationId?: WorkspaceId) => void
+  /** A session row was dropped on another Workspace group. */
+  onSessionDrop: (sessionId: SessionNode['id'], currentTitle: string, destinationId: WorkspaceId) => void
+  /** Row-menu items contributed by other plugins. */
+  menuContributions: MenuContributions
   /** Open the browser-owned session rename dialog. */
   onSessionRename: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Archive a session (row menu action; the row disappears on the state echo). */
@@ -208,7 +240,8 @@ function SessionTree({
   list, useSessionPendingInteraction, startSession, open, forkSession, workspaces, ungroupedSessionIds,
   archivedSessionIds,
   workspaceReady, usePanelInfo,
-  onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+  onRenameRequest, onDeleteRequest, onRehomeRequest, onSessionMove, onSessionDrop, menuContributions,
+  onSessionRename, onSessionArchive,
   insertWorkspaceBefore,
   groupExpansion, setGroupExpanded,
   setSessionOrder, home, t,
@@ -376,6 +409,19 @@ function SessionTree({
               if (workspaceDrag === null) return
               commitWorkspaceDrag(workspaceDrag, { id: workspaceId, half })
             }
+          // A session dragged from another account may land on this whole
+          // group: that is a move, not a reorder.
+          const foreignSessionDrag = drag !== null && drag.accountKey !== group.key && workspaceId !== undefined
+          const foreignHover = foreignSessionDrag && drag.over?.id === group.key
+          const sessionMenuItems = (sessionId: SessionNode['id'], title: string): readonly MenuEntry[] =>
+            contributedItems(menuContributions.session, { sessionId, title, ...(workspaceId === undefined ? {} : { workspaceId }) })
+          const runSessionExtra = (id: string, sessionId: SessionNode['id'], title: string): void => {
+            const target = { sessionId, title, ...(workspaceId === undefined ? {} : { workspaceId }) }
+            runContributed(menuContributions.session, id, target)
+          }
+          const workspaceTarget = workspaceId === undefined || group.cwd === undefined
+            ? undefined
+            : { workspaceId, path: group.cwd, title: group.label }
           return (
           // Group section: header row + expanded top-level session rows. The
           // inter-group breathing room is the section's own margin
@@ -386,20 +432,42 @@ function SessionTree({
                 css.groupSection,
                 workspaceMarker === 'before' && css.workspaceDropBefore,
                 workspaceMarker === 'after' && css.workspaceDropAfter,
+                foreignHover && css.workspaceDropInto,
               )}
-              onDragOver={workspaceDrag === null || hoverWorkspace === undefined
-                ? undefined
-                : (e) => {
+              onDragOver={foreignSessionDrag
+                ? (e) => {
                   e.preventDefault()
                   e.dataTransfer.dropEffect = 'move'
-                  hoverWorkspace(workspaceGroupHalf(e))
-                }}
-              onDrop={workspaceDrag === null || dropWorkspace === undefined
-                ? undefined
-                : (e) => {
+                  setDrag(d => (d === null || d.over?.id === group.key ? d : { ...d, over: { id: group.key as SessionNode['id'], half: 'after' } }))
+                }
+                : workspaceDrag === null || hoverWorkspace === undefined
+                  ? undefined
+                  : (e) => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    hoverWorkspace(workspaceGroupHalf(e))
+                  }}
+              onDragLeave={foreignSessionDrag
+                ? (e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                  setDrag(d => (d === null || d.over?.id !== group.key ? d : { ...d, over: null }))
+                }
+                : undefined}
+              onDrop={foreignSessionDrag
+                ? (e) => {
                   e.preventDefault()
-                  dropWorkspace(workspaceGroupHalf(e))
-                }}
+                  // `foreignSessionDrag` narrowed both `drag` and `workspaceId`.
+                  sessionDropCommitted.current = true
+                  const title = list.byId[drag.sessionId]?.displayTitle ?? ''
+                  setDrag(null)
+                  onSessionDrop(drag.sessionId, title, workspaceId)
+                }
+                : workspaceDrag === null || dropWorkspace === undefined
+                  ? undefined
+                  : (e) => {
+                    e.preventDefault()
+                    dropWorkspace(workspaceGroupHalf(e))
+                  }}
             >
               <ProjectRowItem
                 group={group}
@@ -418,12 +486,19 @@ function SessionTree({
                   }
                 }}
                 drag={workspaceDragProps}
+                extraItems={workspaceTarget === undefined ? undefined : contributedItems(menuContributions.workspace, workspaceTarget)}
+                onExtra={workspaceTarget === undefined
+                  ? undefined
+                  : (id) => { runContributed(menuContributions.workspace, id, workspaceTarget) }}
                 actions={group.workspaceId === undefined
                   ? undefined
                   : {
                     rename: () => {
                     /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
                       if (group.workspaceId !== undefined) onRenameRequest(group.workspaceId, group.label)
+                    },
+                    rehome: () => {
+                      if (group.workspaceId !== undefined) onRehomeRequest(group.workspaceId, group.label)
                     },
                     delete: () => {
                     /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
@@ -458,7 +533,9 @@ function SessionTree({
                     commitSessionDrag(drag, { id: node.id, half: normalizeHalf(half) })
                   },
                   end: () => {
-                    if (drag?.over !== null && drag?.over !== undefined) commitSessionDrag(drag, drag.over)
+                    // A marker parked on another group's key is a move target, never a reorder anchor.
+                    if (drag?.over !== null && drag?.over !== undefined && drag.over.id !== group.key
+                      && !groups.some(candidate => candidate.key === drag.over?.id)) commitSessionDrag(drag, drag.over)
                     else setDrag(null)
                     sessionDropCommitted.current = false
                   },
@@ -473,6 +550,9 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    onMove={(id, title) => { onSessionMove(id, title) }}
+                    extraItems={sessionMenuItems(node.id, node.title)}
+                    onExtra={(id) => { runSessionExtra(id, node.id, node.title) }}
                     onReveal={node.id === revealSessionId && group.key === revealGroup
                       ? () => { onSessionRevealed(node.id) }
                       : undefined}
@@ -711,14 +791,18 @@ export function WorkspaceBrowser({
   insertWorkspaceBefore,
   archiveSession,
   createWorkspace,
+  moveSession,
+  moveSessions,
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
   useHostInfo,
+  useMenuContributions,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
   const home = useHostInfo(info => info.home)
+  const menuContributions = useMenuContributions(contributions => contributions)
   // Ordering remains live while the rail or search replaces the list body.
   const list = useSessions(state => state)
   const workspaces = useWorkspaces(state => state.items)
@@ -1007,6 +1091,44 @@ export function WorkspaceBrowser({
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
+  // Move / rehome dialogs (browser-owned like rename/delete). A session
+  // dropped on another group tries the move directly; a live refusal reopens
+  // as the dialog with the destination preselected so the operator decides.
+  const [moveTarget, setMoveTarget] = useState<{
+    sessionId: SessionId
+    title: string
+    workspaceId: WorkspaceId | undefined
+    destinationId?: WorkspaceId | undefined
+  } | null>(null)
+  const [rehomeTarget, setRehomeTarget] = useState<{
+    workspaceId: WorkspaceId
+    title: string
+    sessionIds: readonly SessionId[]
+  } | null>(null)
+  const owningWorkspaceOf = (sessionId: SessionId): WorkspaceId | undefined =>
+    workspaces.find(candidate => candidate.sessionIds.includes(sessionId))?.workspaceId
+  const openMoveDialog = (sessionId: SessionId, title: string, destinationId?: WorkspaceId): void => {
+    setMoveTarget({
+      sessionId, title, workspaceId: owningWorkspaceOf(sessionId), ...(destinationId === undefined ? {} : { destinationId }),
+    })
+  }
+  const dropSession = (sessionId: SessionId, title: string, destinationId: WorkspaceId): void => {
+    if (owningWorkspaceOf(sessionId) === destinationId) return
+    void moveSession({ sessionId, destination: { workspaceId: destinationId }, notify: true }).then((result) => {
+      if (result.ok) {
+        actions.setGroupExpanded(destinationId, true)
+        return
+      }
+      // Live (or any other refusal): let the dialog explain and offer stop-and-move.
+      openMoveDialog(sessionId, title, destinationId)
+    })
+  }
+  const destinationFlow = {
+    useWorkspaces,
+    createWorkspace,
+    useDirectoryFlow,
+    renderDirectoryFlow: (owner: DirectoryFlowOwnerProps) => renderSlot('sidebar.workspaces.directoryFlow', owner),
+  }
   const [deleting, setDeleting] = useState(false)
   const [deleteCommittedId, setDeleteCommittedId] = useState<WorkspaceId | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -1236,11 +1358,37 @@ export function WorkspaceBrowser({
                   setDeleteTarget({ workspaceId, title })
                   setDeleteError(null)
                 }}
+                onRehomeRequest={(workspaceId, title) => {
+                  const view = workspaces.find(candidate => candidate.workspaceId === workspaceId)
+                  setRehomeTarget({ workspaceId, title, sessionIds: view?.sessionIds ?? [] })
+                }}
+                onSessionMove={openMoveDialog}
+                onSessionDrop={dropSession}
+                menuContributions={menuContributions}
               />
             ))}
         {/* Additive seat: extra groups below the local tree (not while searching). */}
         {wide && normalizedQuery === '' && renderSlot('sidebar.workspaces.extra', { wide })}
       </div>
+
+      <MoveSessionDialog
+        target={moveTarget}
+        workspaces={workspaces}
+        api={{ moveSession, moveSessions, deleteWorkspace }}
+        flow={destinationFlow}
+        t={t}
+        onClose={() => { setMoveTarget(null) }}
+        onMoved={(workspaceId) => { setMoveTarget(null); actions.setGroupExpanded(workspaceId, true) }}
+      />
+      <RehomeWorkspaceDialog
+        target={rehomeTarget}
+        workspaces={workspaces}
+        api={{ moveSession, moveSessions, deleteWorkspace }}
+        flow={destinationFlow}
+        t={t}
+        onClose={() => { setRehomeTarget(null) }}
+        onDone={(workspaceId) => { actions.setGroupExpanded(workspaceId, true) }}
+      />
 
       <Modal
         open={renameTarget !== null}

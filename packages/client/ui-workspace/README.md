@@ -27,6 +27,14 @@ This package lets users browse grouped or flat Session lists, choose a Workspace
 
 Use the sidebar to browse Workspaces and their Sessions, reorder them, and start new ones; use the picker in the Session Intent hero to choose a Workspace for a new session. An open Workspace shows five non-blank Sessions by default and keeps the selected blank **New Session** as one provisional extra row until its first prompt. **Show more** reveals the hidden remainder; closing and reopening the Workspace restores this folded projection.
 
+### Moving sessions and rehoming workspaces
+
+Every Session row's menu offers **Move to…** and every Workspace row's **Rehome workspace…**; dragging a Session row onto another Workspace group also moves it. Both dialogs pick the destination with the same flow as "Add workspace" (an existing Workspace, or a directory registered on the way) and call the Session Controller's `move` / `moveMany`. A Session whose Agent is resident is refused by the Host; the move dialog answers by revealing "Stop the running session and move it" so the operator decides, after which the Session resumes cold in the new Workspace. Rehome moves every member of the source Workspace, reports skips, and can delete the emptied source. Each moved Agent receives a notice on its next step unless "Tell the agent" is unticked.
+
+### Row-menu contributions
+
+Other plugins add items to those menus through `ctx.uiWorkspace.contributeSessionMenu(entry)` and `contributeWorkspaceMenu(entry)`: an entry is data — `{ id, label, icon?, order?, danger?, when?(target), run(target) }` — the rows keep owning their `Menu` and append contributions after the built-in items. Targets carry `{ sessionId, workspaceId?, title }` and `{ workspaceId, path, title }`. Surfaces outside this package that show Session rows can read the same registry (`ctx.uiWorkspace.menuContributions`).
+
 ### Additive seats
 
 The browsing region declares two list seats for plugins that add another kind of workspace: `sidebar.workspaces.headerAction` renders one icon button per entry beside the "Add workspace" button, and `sidebar.workspaces.extra` renders extra groups below the local Workspace tree while the sidebar is wide and no search is active. Both receive `{ wide }`; neither takes part in the local tree's ordering, selection, or search.
