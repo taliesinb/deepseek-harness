@@ -10,6 +10,8 @@ import css from './Menu.module.css'
 export interface MenuItem {
   id: string
   label: ReactNode
+  /** Trailing secondary text (a path, a host) in the label's own row, muted and ellipsized from the start. */
+  detail?: string
   disabled?: boolean
   /** Leading icon (figma .Menu_cell gap 8). */
   icon?: ReactNode
@@ -89,7 +91,7 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * crowds the cell).
  * @returns anchor wrapper with the conditional list.
  */
-export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, onClose, align = 'start', side = 'bottom', portal = false, closeOnPointerLeave = false, dense = false, compact = false, autoFocus = false, selection = 'check', getAnchorRect, footer, className }: {
+export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, onClose, align = 'start', side = 'bottom', portal = false, closeOnPointerLeave = false, dense = false, compact = false, autoFocus = false, selection = 'check', getAnchorRect, footer, className, matchAnchorWidth = false }: {
   open: boolean
   autoFocus?: boolean
   anchor: ReactNode
@@ -107,6 +109,8 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
   compact?: boolean
   selection?: 'check' | 'fill'
   getAnchorRect?: () => DOMRect | null
+  /** Portal mode: the card takes the anchor's width (a select-like popover under a field), lifting the design's max width. */
+  matchAnchorWidth?: boolean
   className?: string | undefined
 }) {
   const rootRef = useRef<HTMLSpanElement>(null)
@@ -194,7 +198,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
       if (lw > 0) x = Math.min(Math.max(x, MARGIN), vw - lw - MARGIN)
       if (lh > 0) y = Math.min(Math.max(y, MARGIN), vh - lh - MARGIN)
 
-      setFixedPos({ left: x, top: y })
+      setFixedPos(matchAnchorWidth ? { left: x, top: y, width: r.width, maxWidth: 'none' } : { left: x, top: y })
     }
     // First run measures the hidden pre-render (same commit as `open`), so
     // end/top alignment and clamping use real dimensions before anything
@@ -206,7 +210,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [open, portal, align, side, getAnchorRect])
+  }, [open, portal, align, side, getAnchorRect, matchAnchorWidth])
 
   // Opening remembers where the keyboard was, so closing can hand it back to
   // that control — an anchor wrapping several (a split button) cannot be asked
@@ -373,6 +377,10 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
         >
           {entry.icon !== undefined && <span className={css.itemIcon}>{entry.icon}</span>}
           <span className={css.itemLabel}>{entry.label}</span>
+          {/* A detail (path) shares the row; the selected row shows the check in its place. */}
+          {entry.detail !== undefined && !(selected && selection === 'check') && (
+            <span className={css.itemDetail} title={entry.detail}>{entry.detail}</span>
+          )}
           {/* Selection marker is a trailing check (figma .Menu_cell) unless the fill mode carries it. */}
           {selected && selection === 'check' && <IconCheckOutline16 className={css.check} />}
         </button>

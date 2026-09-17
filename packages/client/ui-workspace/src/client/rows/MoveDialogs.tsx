@@ -82,6 +82,8 @@ function DestinationPicker({ t, value, exclude, flow, onPick, disabled }: {
         useDirectoryFlow={flow.useDirectoryFlow}
         renderDirectoryFlow={flow.renderDirectoryFlow}
         selectedId={value?.workspaceId ?? exclude}
+        showPaths
+        matchAnchorWidth
         side="bottom"
         onPick={(workspaceId) => { setOpen(false); onPick(workspaceId) }}
         onClose={() => { setOpen(false) }}
@@ -169,6 +171,7 @@ export function MoveSessionDialog({ target, workspaces, api, flow, t, onClose, o
       onClose={onClose}
       closeLabel={t('close')}
       title={t('move.session.title')}
+      width={520}
       footer={(
         <>
           <Button variant="outline" disabled={pending} onClick={onClose}>{t('cancel')}</Button>
@@ -262,6 +265,7 @@ export function RehomeWorkspaceDialog({ target, workspaces, api, flow, t, onClos
       onClose={onClose}
       closeLabel={t('close')}
       title={t('move.workspace.title')}
+      width={520}
       footer={(
         <>
           <Button variant="outline" disabled={pending} onClick={onClose}>{summary === null ? t('cancel') : t('close')}</Button>
