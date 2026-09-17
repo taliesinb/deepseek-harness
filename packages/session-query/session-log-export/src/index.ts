@@ -7,6 +7,8 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import { importSessionZip } from './import.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   flushLiveSessionLog,
@@ -58,12 +60,17 @@ interface SessionLogConnection {
   readonly fetch: {
     register(route: {
       readonly path: string
-      readonly methods: readonly ('GET' | 'HEAD')[]
-      readonly requestBody: 'buffered'
+      readonly methods: readonly ('GET' | 'HEAD' | 'POST')[]
+      readonly requestBody: 'buffered' | 'streaming'
       readonly fetch: (request: Request) => Promise<Response>
     }): () => Promise<void>
   }
 }
+
+/** Authenticated route receiving one export ZIP to store under a Workspace of this Host. */
+export const SESSION_LOG_IMPORT_PATH = '/api/session.import'
+/** Largest import archive accepted (logs plus attachments), in bytes. */
+const MAX_IMPORT_BYTES = 256 * 1024 * 1024
 
 const REQUESTED: CommandResult = {
   kind: 'success',
@@ -85,6 +92,12 @@ export function apply(ctx: Context, config: Config = {}): void {
       : { kind: 'error', text: 'The Web /export command does not accept a path.' }),
   }), 'session-log-download: command')
   connectionOf(ctx).fetch.register({
+    path: SESSION_LOG_IMPORT_PATH,
+    methods: ['POST'],
+    requestBody: 'streaming',
+    fetch: request => sessionLogImportResponse(ctx, request),
+  })
+  connectionOf(ctx).fetch.register({
     path: SESSION_LOG_EXPORT_PATH,
     methods: ['GET', 'HEAD'],
     requestBody: 'buffered',
@@ -103,6 +116,59 @@ export function apply(ctx: Context, config: Config = {}): void {
 
 function connectionOf(ctx: Context): SessionLogConnection {
   return Reflect.get(ctx, 'connection') as SessionLogConnection
+}
+
+/**
+ * `POST /api/session.import?workspaceId=…|cwd=…[&keepIds=false][&origin=…]`
+ * with the export ZIP as the body: store its Sessions under the Workspace and
+ * answer `{ sessionId, imported, attachments }`.
+ */
+async function sessionLogImportResponse(ctx: Context, request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const workspaceIdValue = url.searchParams.get('workspaceId')
+  const cwdValue = url.searchParams.get('cwd')
+  const registry = ctx.get('workspaceRegistry')
+  if (registry === undefined) return new Response('session import is unavailable: missing workspace registry', { status: 500 })
+  if ((workspaceIdValue === null) === (cwdValue === null)) {
+    return new Response('exactly one of workspaceId or cwd is required', { status: 400 })
+  }
+  let workspace: Workspace | undefined
+  try {
+    workspace = workspaceIdValue !== null
+      ? registry.get(brandString<WorkspaceId>(workspaceIdValue))
+      : await registry.create(cwdValue as string)
+  } catch (error) {
+    return new Response(`destination is not usable as a workspace: ${String(error instanceof Error ? error.message : error)}`, { status: 400 })
+  }
+  if (workspace === undefined) return new Response('workspace not found', { status: 404 })
+  const body = request.body
+  if (body === null) return new Response('missing archive body', { status: 400 })
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
+    size += chunk.byteLength
+    if (size > MAX_IMPORT_BYTES) return new Response('archive too large', { status: 413 })
+    chunks.push(chunk)
+  }
+  const zip = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    zip.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  try {
+    const result = await importSessionZip(ctx, zip, {
+      workspace,
+      origin: url.searchParams.get('origin') ?? 'another DSH host',
+      keepIds: url.searchParams.get('keepIds') !== 'false',
+      notify: url.searchParams.get('notify') !== 'false',
+      signal: request.signal,
+    })
+    return Response.json(result)
+  } catch (error) {
+    request.signal.throwIfAborted()
+    return new Response(`session import failed: ${String(error instanceof Error ? error.message : error)}`, { status: 422 })
+  }
 }
 
 async function sessionLogExportResponse(
