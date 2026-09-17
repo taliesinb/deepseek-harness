@@ -21,6 +21,7 @@ import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from '@deepseek-
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 
 /** Message source recorded on the import notice. */
@@ -233,6 +234,15 @@ export async function importSessionZip(
     } finally {
       await handle.close()
     }
+    // Seed this host's projection cache (title, stats, outline…) from the
+    // imported log, so the row lists with its title rather than the directory
+    // name until first open. Fail-soft: the cache is a convenience.
+    try {
+      ctx.get('sessionProjectionCache')?.coldSnapshot(header, header.isSeeded ? log.inheritedEventCount : SessionLogOffset(0), events)
+    } catch (error) {
+      ctx.logger.warn(`session import: projection cache seed for "${sessionId}" failed: ${String(error)}`)
+    }
+    ctx.emit('session-persistence/stored', header)
     return { sessionId, exportedId: log.header.id, ...(parent === undefined ? {} : { parentSessionId: parent }) }
   }
 

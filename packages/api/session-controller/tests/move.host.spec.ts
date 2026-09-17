@@ -67,8 +67,7 @@ async function harness() {
   const originalEmit = ctx.emit.bind(ctx)
   ctx.emit = ((...args: unknown[]) => { emitted.push(args); return (originalEmit as (...a: unknown[]) => unknown)(...args) }) as never
   const retire = vi.fn(async (id: string) => { live.delete(id); return true })
-  const list = { summarizeCold: (header: SessionHeader) => ({ sessionId: header.id, cwd: header.cwd }) }
-  const controller = new SessionMoveController(ctx, { retire } as never, list as never)
+  const controller = new SessionMoveController(ctx, { retire } as never)
   return { ctx, a, b, c, live, retire, controller, emitted }
 }
 
@@ -120,7 +119,7 @@ describe('SessionMoveController', () => {
     expect(pending[0]!.plugin).toBe(SESSION_MOVE_NOTICE_PLUGIN)
     expect(pending[0]!.text).toBe(sessionMoveNoticeText({ title: 'Alpha', path: '/ws/a' }, { title: 'Beta', path: '/ws/b' }, 'workspace-write'))
     expect(pending[0]!.text).toContain('`Workspace Write`')
-    expect(emitted.some(args => Array.isArray(args) && args[0] === 'api-session/added')).toBe(true)
+    expect(emitted.some(args => Array.isArray(args) && args[0] === 'session-persistence/stored')).toBe(true)
   })
 
   it('replaces the pending notice on a second move before the agent runs, keeping the original origin', async () => {

@@ -142,7 +142,7 @@ export class SessionController extends TypertRemoteService {
     }, 'session-controller.promotions')
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
     this.listState = new ApiSessionList(ctx)
-    this.moves = new SessionMoveController(ctx, this.agents, this.listState)
+    this.moves = new SessionMoveController(ctx, this.agents)
     this.openPath = internals.openPath ?? openNativePath
     this.revealPath = internals.revealPath ?? revealNativePath
     this.canOpenPath = internals.canOpenPath
@@ -156,6 +156,11 @@ export class SessionController extends TypertRemoteService {
     })
     ctx.on('session/disposed', (session) => {
       ctx.emit('api-session/removed', session.id)
+    })
+    // Cold storage changes (import, relocation): clients merge summaries by id.
+    ctx.on('session-persistence/stored', (header) => {
+      if (ctx.sessions.get(header.id) !== undefined) return
+      ctx.emit('api-session/added', this.listState.summarizeCold(header))
     })
     ctx.on('agent/status', ({ agent, status }) => {
       ctx.emit('api-session/status', agent.id, status === 'running')
