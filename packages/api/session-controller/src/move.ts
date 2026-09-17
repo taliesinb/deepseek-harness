@@ -183,10 +183,15 @@ export class SessionMoveController {
     if (relocate === undefined) {
       throw new RemoteError('session/move-unsupported', 'this deployment\'s session storage cannot relocate sessions', {})
     }
-    // A resident Agent owns the write handle: retire it first when allowed.
-    if (this.ctx.agents.get(sessionId) !== undefined || this.ctx.sessions.get(sessionId) !== undefined) {
-      if (policy.stopLive !== true) {
-        return { skipped: { sessionId, reason: 'live', message: `session "${sessionId}" is open; stop it first or move with stopLive` } }
+    // A resident Agent owns the storage write handle, so the relocation
+    // cannot proceed while it is loaded. An *idle* Agent is retired silently:
+    // nothing is interrupted, the log is the whole truth, and it resumes
+    // cold at the destination on next open. Only an Agent mid-turn asks the
+    // caller to decide (`stopLive`), because retiring it aborts that turn.
+    const resident = this.ctx.agents.get(sessionId)
+    if (resident !== undefined || this.ctx.sessions.get(sessionId) !== undefined) {
+      if (resident?.status === 'running' && policy.stopLive !== true) {
+        return { skipped: { sessionId, reason: 'live', message: `session "${sessionId}" is running a turn; stop it first or move with stopLive` } }
       }
       const retired = await this.agents.retire(sessionId)
       if (!retired) {

@@ -135,13 +135,20 @@ describe('SessionMoveController', () => {
     expect(b.sessionIds).toEqual([])
   })
 
-  it('refuses a live session, then stop-and-moves it; moveMany reports skips and moves children', async () => {
+  it('retires an idle resident agent silently, refuses a running one until stopLive; moveMany reports skips and moves children', async () => {
     const { ctx, a, b, live, retire, controller } = await harness()
     await store(ctx, header('live', a.path), EVENTS)
+    await store(ctx, header('idle', a.path), EVENTS)
     await store(ctx, header('cold', a.path), EVENTS)
     await store(ctx, header('child', a.path, { origin: 'subagent', parentSession: SessionId('cold'), delegationDepth: 1 }), EVENTS)
-    a.sessionIds.push('live', 'cold')
-    live.set('live', { id: 'live' })
+    a.sessionIds.push('live', 'idle', 'cold')
+    live.set('live', { id: 'live', status: 'running' })
+    live.set('idle', { id: 'idle', status: 'idle' })
+    // Idle: no question asked, the agent is retired and the session moves.
+    const idleMoved = await controller.move({ sessionId: SessionId('idle'), destination: { workspaceId: b.id as never } })
+    expect(idleMoved.moved).toEqual(['idle'])
+    expect(retire).toHaveBeenCalledWith('idle')
+    retire.mockClear()
     await expect(controller.move({ sessionId: SessionId('live'), destination: { workspaceId: b.id as never } }))
       .rejects.toMatchObject({ code: 'session/move-live' })
     expect(retire).not.toHaveBeenCalled()
@@ -149,7 +156,7 @@ describe('SessionMoveController', () => {
     const batch = await controller.moveMany({ sessionIds: [SessionId('live'), SessionId('cold')], destination: { workspaceId: b.id as never } })
     expect(batch.moved).toEqual(['child', 'cold'])
     expect(batch.skipped).toEqual([expect.objectContaining({ sessionId: 'live', reason: 'live' })])
-    expect(b.sessionIds).toEqual(['cold'])
+    expect(b.sessionIds).toEqual(['idle', 'cold'])
     expect((await ctx.sessionPersistence.stat(SessionId('child')))?.header.cwd).toBe('/ws/b')
     // The child has no registry account and gets no separate attach.
     expect(b.sessionIds).not.toContain('child')
@@ -157,7 +164,7 @@ describe('SessionMoveController', () => {
     const moved = await controller.move({ sessionId: SessionId('live'), destination: { workspaceId: b.id as never }, stopLive: true })
     expect(retire).toHaveBeenCalledWith('live')
     expect(moved.moved).toEqual(['live'])
-    expect(b.sessionIds).toEqual(['cold', 'live'])
+    expect(b.sessionIds).toEqual(['idle', 'cold', 'live'])
   })
 
   it('registers a directory destination and reports same-workspace / missing', async () => {
