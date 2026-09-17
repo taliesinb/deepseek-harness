@@ -477,7 +477,10 @@ export function SessionNodeItem({
       onPointerLeave={() => { revealClippedTitle(titleRef.current, false) }}
       draggable={draggable}
       onDragStart={drag === undefined || row.blank
-        ? undefined
+        // The provisional New Session row is pinned first and has no stored
+        // session to move: refuse a native drag outright (WebKit can still
+        // lift a non-draggable element that holds a selection).
+        ? (e) => { e.preventDefault() }
         : (e) => {
           e.dataTransfer.effectAllowed = 'move'
           e.dataTransfer.setData('text/plain', node.id)
