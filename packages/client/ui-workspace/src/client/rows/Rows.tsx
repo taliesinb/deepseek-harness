@@ -10,11 +10,11 @@ import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
-  IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
+  IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconFolderOpenOutline16,
   IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, relativeTime,
   StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry, StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
@@ -135,13 +135,17 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
-export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, t }: {
+export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, extraItems, onExtra, drag, home, t }: {
   group: GroupNode
   containsCurrentDescendant?: boolean
   onToggle: () => void
   onCreate: () => void
   /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
-  actions?: { rename: () => void; delete: () => void } | undefined
+  actions?: { rename: () => void; rehome: () => void; delete: () => void } | undefined
+  /** Contributed menu items appended after the built-ins (ids prefixed by the owner). */
+  extraItems?: readonly MenuEntry[] | undefined
+  /** Run one contributed item by id. */
+  onExtra?: ((id: string) => void) | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
@@ -153,8 +157,11 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label
   const active = containsCurrentDescendant || (group.expanded && group.containsCurrent)
   const [menuOpen, setMenuOpen] = useState(false)
-  const workspaceMenuItems = [
+  const workspaceMenuItems: MenuEntry[] = [
     { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
+    { id: 'rehome', label: t('menu.rehomeWorkspace'), icon: <IconFolderOpenOutline16 /> },
+    ...(extraItems === undefined || extraItems.length === 0 ? [] : [{ type: 'separator' as const, id: 'sep-contrib' }, ...extraItems]),
+    { type: 'separator' as const, id: 'sep-delete' },
     { id: 'delete', label: t('delete.workspace'), icon: <IconTrashOutline16 />, danger: true },
   ]
   const ownRow = (
@@ -190,12 +197,10 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
             items={workspaceMenuItems}
             onSelect={(id) => {
               setMenuOpen(false)
-              // Unknown ids leave before the dispatch: a future menu row must
-              // not inherit the destructive branch as an else fallback.
-              /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
-              if (id !== 'rename' && id !== 'delete') return
               if (id === 'rename') actions.rename()
-              else actions.delete()
+              else if (id === 'rehome') actions.rehome()
+              else if (id === 'delete') actions.delete()
+              else onExtra?.(id)
             }}
             portal
             closeOnPointerLeave
@@ -404,7 +409,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onMove, extraItems, onExtra, onReveal, drag, flat = false, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -416,6 +421,12 @@ export function SessionNodeItem({
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Open the browser-owned move dialog for this session (row menu action). */
+  onMove?: ((id: SessionNode['id'], currentTitle: string) => void) | undefined
+  /** Contributed menu items appended after the built-ins (ids prefixed by the owner). */
+  extraItems?: readonly MenuEntry[] | undefined
+  /** Run one contributed item by id. */
+  onExtra?: ((id: string) => void) | undefined
   /** Scroll this row into view after search navigation, then acknowledge it. */
   onReveal?: (() => void) | undefined
   /** Present on reorderable-list rows so every row can remain a drop target. */
@@ -442,11 +453,13 @@ export function SessionNodeItem({
   // Archive hides the row through the registry-global archive set and never
   // touches the session log, so it is not styled as destructive and needs no
   // confirmation dialog.
-  const sessionMenuItems = [
+  const sessionMenuItems: MenuEntry[] = [
     { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
+    ...(onMove === undefined || row.blank ? [] : [{ id: 'move', label: t('menu.moveSession'), icon: <IconFolderOpenOutline16 /> }]),
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    ...(extraItems === undefined || extraItems.length === 0 ? [] : [{ type: 'separator' as const, id: 'sep-contrib' }, ...extraItems]),
   ]
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
@@ -511,8 +524,10 @@ export function SessionNodeItem({
             onSelect={(id) => {
               setMenuOpen(false)
               if (id === 'rename') onRename(node.id, row.title)
-              if (id === 'fork') onFork(node.id)
-              if (id === 'archive') onArchive(node.id)
+              else if (id === 'fork') onFork(node.id)
+              else if (id === 'move') onMove?.(node.id, row.title)
+              else if (id === 'archive') onArchive(node.id)
+              else onExtra?.(id)
             }}
             portal
             closeOnPointerLeave

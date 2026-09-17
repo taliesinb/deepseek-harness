@@ -30,7 +30,10 @@ import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
-export type { UiWorkspace } from './navigation.ts'
+export type {
+  MenuContribution, MenuContributions, SessionMenuContribution, SessionMenuTarget, UiWorkspace,
+  WorkspaceMenuContribution, WorkspaceMenuTarget,
+} from './navigation.ts'
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
   WorkspaceBrowserInjected, WorkspaceBrowserProps, WorkspaceBrowserSeatOwnerProps, WorkspacePickerInjected, WorkspacePickerProps,
@@ -133,7 +136,9 @@ export function apply(ctx: Context): void {
     },
     archiveSession: async (sessionId) => { await uiWorkspace.archiveSession(sessionId) },
     createWorkspace: input => workspaces.create(input),
-    hooks: { directoryFlow: browserFlowSource, hostInfo },
+    moveSession: opts => sessions.move(opts),
+    moveSessions: opts => sessions.moveMany(opts),
+    hooks: { directoryFlow: browserFlowSource, hostInfo, menuContributions: uiWorkspace.menuContributions },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),

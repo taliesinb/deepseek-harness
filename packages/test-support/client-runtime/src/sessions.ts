@@ -311,7 +311,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'create' | 'setSubagentCatalogOpen' | 'refreshSubagents' | 'refresh' | 'search' | 'fork'
+    method: 'create' | 'setSubagentCatalogOpen' | 'refreshSubagents' | 'refresh' | 'search' | 'fork' | 'move' | 'moveMany'
     args: unknown[]
   }[] = []
 
@@ -685,6 +685,20 @@ export class TestSessions implements ISessions {
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId> {
     this.calls.push({ method: 'fork', args: [opts] })
     return Promise.resolve(opts.sessionId)
+  }
+
+  /** Recorded move stub: reports success with no relocation (benches asserting moves drive the production service). */
+  move(opts: Parameters<ISessions['move']>[0]): ReturnType<ISessions['move']> {
+    this.calls.push({ method: 'move', args: [opts] })
+    const workspaceId = 'workspaceId' in opts.destination ? opts.destination.workspaceId : ('' as never)
+    return Promise.resolve({ ok: true, value: { sessionId: opts.sessionId, workspaceId, moved: [opts.sessionId] } })
+  }
+
+  /** Recorded batch-move stub: every id reports as moved. */
+  moveMany(opts: Parameters<ISessions['moveMany']>[0]): ReturnType<ISessions['moveMany']> {
+    this.calls.push({ method: 'moveMany', args: [opts] })
+    const workspaceId = 'workspaceId' in opts.destination ? opts.destination.workspaceId : ('' as never)
+    return Promise.resolve({ ok: true, value: { workspaceId, moved: [...opts.sessionIds], skipped: [] } })
   }
 
   /**

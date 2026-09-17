@@ -14,6 +14,8 @@ import type {
   IWorkspaces, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
 interface MainSelection {
@@ -81,6 +83,65 @@ export interface UiWorkspace {
    * @returns created absolute path.
    */
   createDirectory(path: string, name: string): Promise<string>
+  /**
+   * Contribute one row-menu item to every Session row of the sidebar tree.
+   * Contributions are data: the row keeps owning its Menu and appends these
+   * after the built-in items, in `order`. Other surfaces that show Session
+   * rows (a plugin's remote groups) read the same registry.
+   * @param entry - item identity, label, placement, predicate, and action.
+   * @returns disposer withdrawing the item.
+   */
+  contributeSessionMenu(entry: SessionMenuContribution): () => void
+  /**
+   * Contribute one row-menu item to every Workspace row of the sidebar tree.
+   * @param entry - item identity, label, placement, predicate, and action.
+   * @returns disposer withdrawing the item.
+   */
+  contributeWorkspaceMenu(entry: WorkspaceMenuContribution): () => void
+  /** Live registry of row-menu contributions (an observable for the browser's hook). */
+  readonly menuContributions: HostObservable<MenuContributions>
+}
+
+/** The Session row a contributed menu item acts on. */
+export interface SessionMenuTarget {
+  readonly sessionId: SessionId
+  /** Owning Workspace, absent for an ungrouped Session. */
+  readonly workspaceId?: WorkspaceId
+  readonly title: string
+}
+
+/** The Workspace row a contributed menu item acts on. */
+export interface WorkspaceMenuTarget {
+  readonly workspaceId: WorkspaceId
+  readonly path: string
+  readonly title: string
+}
+
+/** One contributed row-menu item. */
+export interface MenuContribution<T> {
+  /** Stable id, unique among contributions of the same row kind. */
+  readonly id: string
+  /** Display label; a thunk follows the active locale. */
+  readonly label: string | (() => string)
+  /** Optional leading glyph (a 16px icon element). */
+  readonly icon?: ReactNode
+  /** Sort key among contributions; built-in items always come first. */
+  readonly order?: number
+  /** Destructive styling. */
+  readonly danger?: boolean
+  /** Offer the item only for matching rows. */
+  readonly when?: (target: T) => boolean
+  /** Run the action for the row. */
+  readonly run: (target: T) => void
+}
+
+export type SessionMenuContribution = MenuContribution<SessionMenuTarget>
+export type WorkspaceMenuContribution = MenuContribution<WorkspaceMenuTarget>
+
+/** Current contributions, in order. */
+export interface MenuContributions {
+  readonly session: readonly SessionMenuContribution[]
+  readonly workspace: readonly WorkspaceMenuContribution[]
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -228,6 +289,40 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const result = await this.directoryPicker.createDirectory(path, name)
     if (!result.ok) throw new DirectoryBrowseError(result.error)
     return result.value
+  }
+
+  private contributions: MenuContributions = { session: [], workspace: [] }
+  private readonly contributionListeners = new Set<() => void>()
+  readonly menuContributions: HostObservable<MenuContributions> = {
+    getSnapshot: () => this.contributions,
+    subscribe: (listener) => {
+      this.contributionListeners.add(listener)
+      return () => { this.contributionListeners.delete(listener) }
+    },
+  }
+
+  contributeSessionMenu(entry: SessionMenuContribution): () => void {
+    return this.contribute('session', entry)
+  }
+
+  contributeWorkspaceMenu(entry: WorkspaceMenuContribution): () => void {
+    return this.contribute('workspace', entry)
+  }
+
+  private contribute<K extends keyof MenuContributions>(kind: K, entry: MenuContributions[K][number]): () => void {
+    const byOrder = (a: { order?: number }, b: { order?: number }): number => (a.order ?? 0) - (b.order ?? 0)
+    const publish = (next: readonly MenuContributions[K][number][]): void => {
+      this.contributions = { ...this.contributions, [kind]: [...next].sort(byOrder) }
+      for (const listener of this.contributionListeners) listener()
+    }
+    const current = this.contributions[kind] as readonly MenuContributions[K][number][]
+    if (current.some(candidate => candidate.id === entry.id)) {
+      throw new Error(`uiWorkspace: duplicate ${kind} menu contribution "${entry.id}"`)
+    }
+    publish([...current, entry])
+    return () => {
+      publish((this.contributions[kind] as readonly MenuContributions[K][number][]).filter(candidate => candidate.id !== entry.id))
+    }
   }
 
   private watchNavigation(): () => void {

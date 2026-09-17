@@ -517,3 +517,94 @@
     transition: none;
   }
 }
+
+/* Move / rehome dialogs. */
+.moveBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.moveField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.moveLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.moveDestination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.moveDestination:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.moveDestinationText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moveDestinationPath {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.moveOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.moveOption input {
+  margin: 2px 0 0;
+}
+
+.moveOptionDesc {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.moveDesc {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.moveHint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-business-primary);
+}
+
+/* A foreign session drag hovering a workspace group: the whole group is the target. */
+.workspaceDropInto {
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1.5px var(--dsw-alias-state-business-primary);
+}

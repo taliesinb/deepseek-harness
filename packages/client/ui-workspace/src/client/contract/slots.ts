@@ -27,7 +27,8 @@ import type { HostObservable, PropsHooks, PropsLocale, PropsRenderSlots, PropsRu
 // runtime shares below.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISessions, SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { MenuContributions } from '../navigation.ts'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -113,7 +114,17 @@ export type WorkspaceBrowserInjected = {
      * saw. Select the field the surface needs (`info => info.home`).
      */
     hostInfo: HostObservable<RemoteHostFacts>
+    /** Row-menu items contributed by other plugins (`ctx.uiWorkspace.contributeSessionMenu` / `contributeWorkspaceMenu`). */
+    menuContributions: HostObservable<MenuContributions>
   }
+  /**
+   * Move one Session (and its same-cwd subagent children) to another
+   * Workspace. Returns the Host result instead of throwing: `session/move-live`
+   * is an expected outcome the move dialog answers with a stop-and-move offer.
+   */
+  moveSession: ISessions['move']
+  /** Move several Sessions to one Workspace; per-Session skips arrive in the value. */
+  moveSessions: ISessions['moveMany']
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
    * open it; without an explicit workspace, inherit the current Session

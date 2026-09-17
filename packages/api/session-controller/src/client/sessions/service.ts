@@ -257,9 +257,9 @@ export class ClientSessions implements ISessions {
    */
   constructor(
     private readonly rootCtx: Context,
-    remote: SessionRemotes,
+    private readonly remotes: SessionRemotes,
   ) {
-    this.manager = new SessionManager(remote)
+    this.manager = new SessionManager(remotes)
     this.list = createSnapshotStore<SessionListState>({
       ids: [], byId: {}, phase: 'pending', subagentsByParent: {}, jobsBySession: {},
     })
@@ -492,6 +492,18 @@ export class ClientSessions implements ISessions {
       }
     }
     return childId
+  }
+
+  async move(opts: Parameters<ISessions['move']>[0]): ReturnType<ISessions['move']> {
+    const result = await this.remotes.session.move(opts)
+    if (result.ok) this.projectList()
+    return result
+  }
+
+  async moveMany(opts: Parameters<ISessions['moveMany']>[0]): ReturnType<ISessions['moveMany']> {
+    const result = await this.remotes.session.moveMany(opts)
+    if (result.ok) this.projectList()
+    return result
   }
 
   /**

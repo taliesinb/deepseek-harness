@@ -135,6 +135,34 @@ export interface ISessions {
    */
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId>
   /**
+   * Move one session (with its same-cwd subagent children) to another
+   * Workspace. The result is returned, not thrown: `session/move-live` is an
+   * expected outcome the UI answers with a stop-and-move offer.
+   * @param opts - session, destination (existing Workspace or a directory to register), and live policy.
+   * @returns the Host result: destination Workspace and moved ids, or the refusal.
+   */
+  move(opts: {
+    sessionId: SessionId
+    destination: { workspaceId: WorkspaceId } | { path: string; title?: string }
+    stopLive?: boolean
+    notify?: boolean
+  }): Promise<RemoteResult<{ sessionId: SessionId; workspaceId: WorkspaceId; moved: readonly SessionId[] }>>
+  /**
+   * Move several sessions to one Workspace; per-session skips are reported in the value.
+   * @param opts - sessions, destination, and live policy.
+   * @returns the Host result with moved ids and skips.
+   */
+  moveMany(opts: {
+    sessionIds: readonly SessionId[]
+    destination: { workspaceId: WorkspaceId } | { path: string; title?: string }
+    stopLive?: boolean
+    notify?: boolean
+  }): Promise<RemoteResult<{
+    workspaceId: WorkspaceId
+    moved: readonly SessionId[]
+    skipped: readonly { sessionId: SessionId; reason: 'live' | 'missing' | 'same-workspace' | 'error'; message: string }[]
+  }>>
+  /**
    * Borrow an already-retained Agent-scoped Context without extending its lifetime.
    * @param id - session id.
    * @returns the live scoped Context, or undefined without a retained generation.
