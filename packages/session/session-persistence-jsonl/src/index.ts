@@ -13,7 +13,7 @@ import {
   sessionFormatCatalog,
 } from '@deepseek-ai/dsh-session-format-catalog'
 import { readdirSync, type Dirent } from 'node:fs'
-import { open, mkdir, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
+import { open, mkdir, readdir, realpath, link, rename, rm, stat, truncate } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -27,12 +27,13 @@ import {
   type SessionHandleReadResult,
   type SessionLocation, type SessionPersistenceCreateOptions,
   type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
+  type SessionRelocateRequest, type SessionRelocateResult,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
 } from '@deepseek-ai/dsh-session-persistence'
 import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState } from './storage.ts'
 import { SessionWriteLease } from './lease.ts'
-import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import {
   assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath, logPath, logSuffix,
@@ -403,6 +404,88 @@ class JsonlSessionPersistence extends SessionPersistence {
         throw new AggregateError([failure, releaseFailure], `session "${id}": write open failed and its lock release failed`)
       }
       throw failure
+    }
+  }
+
+  /**
+   * Move one cold stored session to another working directory (see the seam
+   * contract). The current generation is decoded under the write lock exactly
+   * as `open(id, 'write')` would (publishing a pending v0→v3 migration first),
+   * the header's `cwd` is rewritten, the requested events are stamped after the
+   * stored tail, the complete artifact is re-validated through the current
+   * format, published under the new project directory with the same
+   * link-publish mechanics as a fresh materialization, and only then is the
+   * old session directory renamed out of the root into
+   * `<root>/../session-move-backups/`. A failure after publication removes the
+   * new artifact so the id never appears in two project directories.
+   * @param request - session, destination cwd, and events to append.
+   * @returns the stored header afterwards.
+   */
+  override async relocate(request: SessionRelocateRequest): Promise<SessionRelocateResult> {
+    const { id, signal } = request
+    const newCwd = resolve(request.cwd)
+    signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    // In-process owners (a live Agent's write handle) are refused here; a
+    // foreign process's owner is refused by the lock below.
+    this.tracker.claimWrite(id)
+    let lease: SessionWriteLease | undefined
+    try {
+      const resolved = await this.findLog(id, signal)
+      if (resolved === undefined) throw new SessionPersistenceNotFoundError(id)
+      const oldDir = dirname(resolved.currentPath)
+      lease = await this.acquireLease(id, undefined, oldDir)
+      const prepared = await this.requireStoredLog(id, signal)
+      signal?.throwIfAborted()
+      const stored = prepared.status === 'prepared' ? await this.publishStoredMigration(id, prepared) : prepared
+      if (stored.meta.cwd !== undefined && resolve(stored.meta.cwd) === newCwd) {
+        return { header: stored.meta, moved: false }
+      }
+      const header: SessionHeader = { ...stored.meta, cwd: newCwd }
+      const lastSeq = stored.events.at(-1)?.seq ?? -1
+      const now = Date.now()
+      const appended = (request.append ?? []).map((entry, index) => ({
+        type: entry.type,
+        seq: SessionSeq(lastSeq + 1 + index),
+        time: now,
+        data: entry.data,
+        ...(entry.ignorable === true ? { ignorable: true as const } : {}),
+      } as SessionEvent))
+      // Re-validate the whole artifact under the rewritten header through the
+      // current format's strict restore: the same acceptance a cold read applies.
+      const restore = sessionFormatCatalog.createRestore(
+        toHeaderLine(header, header.isSeeded ? stored.inheritedEventCount : undefined),
+        { recovery: 'strict', validation: 'transformed' },
+      )
+      for (const event of [...stored.events, ...appended]) restore.decodeRow(structuredClone(event))
+      const events = restore.finish().events as SessionEvent[]
+      validateStoredEvents(header, events, this.locate(header))
+      signal?.throwIfAborted()
+      const newDir = sessionDir(this.root, newCwd, id)
+      await this.materialize(header, stored.inheritedEventCount, events)
+      // The lock file lives in the old directory: release it before the
+      // directory moves; the in-process claim still fences this backend.
+      await lease.release()
+      lease = undefined
+      const backupRoot = join(dirname(this.root), 'session-move-backups')
+      const backupPath = join(backupRoot, `${encodeSegment(id)}-${String(now)}`)
+      try {
+        await mkdir(backupRoot, { recursive: true, mode: 0o700 })
+        await rename(oldDir, backupPath)
+      } catch (error) {
+        // Never leave the id published twice: retire the new artifact and surface the failure.
+        await rm(newDir, { recursive: true, force: true }).catch(() => {})
+        throw error
+      }
+      this.coldLogMemo.delete(id)
+      this.migrationPreparations.delete(id)
+      return { header, moved: true, backupPath }
+    } finally {
+      try {
+        await lease?.release()
+      } finally {
+        this.tracker.releaseClaim(id)
+      }
     }
   }
 

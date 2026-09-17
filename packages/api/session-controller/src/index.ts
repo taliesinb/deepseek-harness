@@ -16,6 +16,7 @@ import {
   type ApiSessionAgentResult,
 } from './agent.ts'
 import { SessionCommandController } from './commands.ts'
+import { SessionMoveController } from './move.ts'
 import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
 import { SessionFileReferences } from './file-references.ts'
@@ -36,6 +37,10 @@ import type {
   SessionFollowFrame,
   SessionFollowRequest,
   SessionForkRequest,
+  SessionMoveManyRequest,
+  SessionMoveManyValue,
+  SessionMoveRequest,
+  SessionMoveValue,
   SessionForkValue,
   SessionListRequest,
   SessionListValue,
@@ -92,6 +97,7 @@ export class SessionController extends TypertRemoteService {
     'fileUploads',
     'llm',
     'sessions',
+    'sessionPersistence',
     'sessionProjections',
     'sessionQuery',
     'typert',
@@ -104,6 +110,7 @@ export class SessionController extends TypertRemoteService {
 
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
+  private readonly moves: SessionMoveController
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
   private readonly listState: ApiSessionList
@@ -135,6 +142,7 @@ export class SessionController extends TypertRemoteService {
     }, 'session-controller.promotions')
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
     this.listState = new ApiSessionList(ctx)
+    this.moves = new SessionMoveController(ctx, this.agents, this.listState)
     this.openPath = internals.openPath ?? openNativePath
     this.revealPath = internals.revealPath ?? revealNativePath
     this.canOpenPath = internals.canOpenPath
@@ -335,6 +343,30 @@ export class SessionController extends TypertRemoteService {
   @Remote('fork')
   fork(request: SessionForkRequest): Promise<SessionForkValue> {
     return this.commands.fork(request)
+  }
+
+  /**
+   * Move one Session (with its same-cwd subagent children) to another
+   * Workspace: relocate the stored log under the new cwd, re-account it in
+   * the Workspace registry, and leave the Agent a notice for its next step.
+   * A resident Agent is refused unless `stopLive` retires it first.
+   * @param request - Session, destination Workspace or directory, and live policy.
+   * @returns the destination Workspace and every Session that moved.
+   */
+  @Remote('move')
+  move(request: SessionMoveRequest): Promise<SessionMoveValue> {
+    return this.moves.move(request)
+  }
+
+  /**
+   * Move several Sessions to one Workspace, reporting skips per Session
+   * instead of failing the batch — the basis of "rehome this Workspace".
+   * @param request - Sessions, destination, and live policy.
+   * @returns moved ids and skipped Sessions with reasons.
+   */
+  @Remote('moveMany')
+  moveMany(request: SessionMoveManyRequest): Promise<SessionMoveManyValue> {
+    return this.moves.moveMany(request)
   }
 
   /**

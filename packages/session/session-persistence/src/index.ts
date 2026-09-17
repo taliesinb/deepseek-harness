@@ -106,6 +106,33 @@ export interface SessionPersistenceListOptions {
   readonly signal?: AbortSignal
 }
 
+/** One event to append during a relocation; the backend stamps `seq` and `time`. */
+export interface SessionRelocateAppend {
+  readonly type: SessionEvent['type']
+  readonly data: SessionEvent['data']
+  readonly ignorable?: true
+}
+
+/** Request for {@link SessionPersistence.relocate}. */
+export interface SessionRelocateRequest {
+  readonly id: SessionId
+  /** Absolute working directory the stored session should belong to afterwards. */
+  readonly cwd: string
+  /** Events appended after the stored tail as part of the same durable rewrite (e.g. a notice to the agent). */
+  readonly append?: readonly SessionRelocateAppend[]
+  readonly signal?: AbortSignal
+}
+
+/** Result of {@link SessionPersistence.relocate}. */
+export interface SessionRelocateResult {
+  /** The header now stored for the session. */
+  readonly header: SessionHeader
+  /** False when the session already belonged to the requested cwd (nothing was written). */
+  readonly moved: boolean
+  /** Where the backend retained the previous artifact, when it keeps one. */
+  readonly backupPath?: string
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     sessionPersistence: SessionPersistence
@@ -196,6 +223,21 @@ export abstract class SessionPersistence extends Service {
    * @returns one snapshot per stored session.
    */
   abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+  /**
+   * Optional: move one cold stored session to another working directory. The
+   * header's `cwd` is the session's workspace membership, so this is what a
+   * "move session to workspace" means at the storage layer. A backend that
+   * implements it rewrites the header, appends the requested events as one
+   * durable operation, publishes the artifact where the new cwd places it, and
+   * retires the old one. A session that is open for writing (a live Agent, in
+   * this or another process) is refused with `SessionAlreadyOwnedError`; the
+   * caller decides whether to stop it first. Backends that cannot relocate
+   * leave this undefined and callers fail with an explicit unsupported error.
+   * @param request - the session, its destination cwd, and events to append.
+   * @returns the stored header afterwards and whether anything moved.
+   */
+  relocate?(request: SessionRelocateRequest): Promise<SessionRelocateResult>
 }
 
 export default SessionPersistence

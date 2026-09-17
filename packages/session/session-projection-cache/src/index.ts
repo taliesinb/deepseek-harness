@@ -180,6 +180,33 @@ export class SessionProjectionCache extends Service {
     return title === undefined ? undefined : { ...title, asOfSeq: -1 }
   }
 
+  /**
+   * Re-bind one stored record to a relocated session's header. A relocation
+   * (`sessionPersistence.relocate`) changes only the header's `cwd`; every
+   * cached projection (title, stats, outline…) is cwd-independent, so the
+   * record stays valid once its identity names the new cwd. Without this the
+   * moved session lists without title hints until its next activation.
+   * @param previous - the header the record was written under.
+   * @param current - the header stored now (same session, new cwd).
+   * @param inheritedEventCount - exact inherited cut of the lifecycle.
+   * @returns true when a matching record was re-bound.
+   */
+  async rebind(previous: SessionHeader, current: SessionHeader, inheritedEventCount: SessionLogOffset): Promise<boolean> {
+    if (previous.id !== current.id) throw new Error('projection cache rebind requires one session')
+    const table = this.requireTable()
+    const record = table.get(current.id)
+    if (record === undefined) return false
+    const expected = identityOf(previous, inheritedEventCount)
+    if (!identityMatches(record.identity, expected) && !predecessorIdentityMatches(record.identity, expected)) return false
+    const identity: CheckpointIdentity = {
+      ...record.identity,
+      ...(current.cwd === undefined ? {} : { cwd: current.cwd }),
+    }
+    if (current.cwd === undefined) delete (identity as { cwd?: string }).cwd
+    await table.put(current.id, { identity, rows: record.rows })
+    return true
+  }
+
   /** View selected wire rows and bind them to their lowest served watermark. */
   private viewRecord(
     record: CheckpointRecord,
