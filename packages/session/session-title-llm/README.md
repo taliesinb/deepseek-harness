@@ -129,3 +129,12 @@ None.
 </details>
 
 **Runtime invariant:** No companion is published. This stateless helper validates and freezes each auxiliary request before dispatch; deadline, stream, cited message seqs, and provider/model fields are checked synchronously and by tests.
+
+## `style: slug`
+
+Setting `style: slug` on either provider row asks the model for a lowercase
+hyphenated identifier (`fix-login-redirect`) instead of a phrase, and
+`slugifyTitle` coerces whatever comes back (quotes, Title Case, sentences,
+accents) into that shape, capped at `min(targetWords, 6)` words. Meant for
+sidebars that also use a hand-typed `slug: prompt` naming convention, and for
+small on-device title models whose free-form summaries are unreliable.
