@@ -60,7 +60,8 @@ to `<parent>/tali-dash-plugins` — the plugins link into it relatively; the
 parent can be anywhere, e.g. `~/github` or `~/Documents/Symbolica`) run
 through `pnpm dsh web`, an always-on **relay** LaunchAgent (`io.github.taliesinb.dsh-web-relay`,
 port 3083) starts DSH on demand, and the plugins load from
-`<parent>/tali-dash-plugins/plugins/*` via `~/.dsh/profiles/web/cordis.patch.yml`.
+`<parent>/tali-dash-plugins/plugins/*`, installed into the profile as bundles
+(`pnpm install-plugins`).
 
 ---
 
@@ -276,17 +277,19 @@ before syncing `uqr`; `enforce-model-preset` did not fire for sessions on the
 
 ## Part C — standalone install (the new Mac is the primary)
 
-This mirrors Tali's Air. C1–C4 were replayed on a second Mac on 2026-09-18
+This mirrors Tali's Air. C1–C3 were replayed on a second Mac on 2026-09-18
 (macOS 26.6.2, node 25.8.1, pnpm 11.7.0, repos under
-`~/Documents/Symbolica/`): they work as written below. C5 and the optional
+`~/Documents/Symbolica/`). C4's one-command bundle install replaced a
+hand-written patch the same day and was verified against a throwaway home
+on the Air (12 rows composed, all client bundles served). C5 and the optional
 Apple route have only been exercised on Tali's machines.
 
 **Layout.** The two repos must be **siblings** (the plugins link into the
-checkout relatively), but the parent directory can be anywhere. This part
-writes `$PARENT` for it — set it once, e.g. `PARENT=~/github` or
-`PARENT=~/Documents/Symbolica`. Two files need the **absolute, expanded**
-local path written in (no `~`, no variables): the profile patch in C4 and, if
-you use the dev overlay, `cordis.dev.yml`.
+checkout relatively, and the installer finds the checkout next door), but the
+parent directory can be anywhere. This part writes `$PARENT` for it — set it
+once, e.g. `PARENT=~/github` or `PARENT=~/Documents/Symbolica`. Nothing in the
+profile needs an absolute path; only the dev overlay `cordis.dev.yml` does,
+and only if you use it.
 
 **Stopping points.** After C4 you have a fully working local DSH with the
 plugins (`pnpm dsh web`). A4/C3-Apple (on-device model) and C5 (Tailscale
@@ -405,189 +408,76 @@ cat > ~/.dsh/.agent-presets/minimal-no-tools/agent.cordis.yml <<'EOF'
 EOF
 ```
 
-### C4. The web profile patch — the `tali-dash-plugins` rows
-
-`~/.dsh/profiles/web/cordis.patch.yml` (created by the first launch, with a
-header comment) is `patchReload: live` — saving it reloads the running server.
+### C4. Install the `tali-dash-plugins` plugins into the web profile
 
 Scope: the hundreds of in-tree `@deepseek-ai/dsh-*` plugins come from the
 shipped `web` bundle and need no configuration — `pnpm dsh web` composes them.
-This patch only adds the **out-of-tree plugins from `tali-dash-plugins`** on
-top. Below is that set as it runs on Tali's Air: 12 rows, one per plugin
-directory in the repo that is meant for the live profile. Paste it whole, then:
+This step adds only the **out-of-tree plugins from `tali-dash-plugins`**.
 
-1. Replace `/Users/tali/github` with your absolute, expanded parent path
-   (`/Users/<you>/<parent>`; no `~`, no `$PARENT`) — `sed -i '' "s#/Users/tali/github#$(cd "$PARENT" && pwd)#g" ~/.dsh/profiles/web/cordis.patch.yml`.
-2. **Delete** the rows whose external app you do not have (each row's comment
-   names it; A6 has the install pointers). A row whose app is missing does
-   not break the boot — its tools just fail at first use — but there is no
-   point carrying it.
+Every live-profile plugin in that repo is an installable **bundle** (its
+`package.json` declares `dsh.bundle.patch`, and its `cordis.patch.yml` inserts
+its own `tali-*` row by package name), so the whole set is one command:
 
-| Row | Needs | Tools it adds |
+```sh
+cd "$PARENT"/tali-dash-plugins
+pnpm install-plugins                 # = tools/install-plugins.sh; --profile <name>, --checkout DIR, --dry-run, --remove
+```
+
+It runs `pnpm dsh plugin --profile web add <12 plugin dirs>` from the checkout
+next door: pnpm links the directories into `~/.dsh/profiles/web/node_modules`
+(flat, `nodeLinker: hoisted`) and appends 12 bundles to
+`dsh.profile.bundles`; the rows resolve **by package name**, so no patch file
+carries an absolute path. It refuses to run if a client plugin's
+`lib/client.js` is missing (C2). Idempotent; `pnpm remove-plugins` undoes it;
+`pnpm dsh plugin --profile web remove <pkg>` drops one.
+
+| Plugin (package) | Needs on the Mac | Tools it adds |
 |---|---|---|
-| `tali-tailscale-remote` | Tailscale.app (C5); inert until *Enable* | Settings → Tailscale remote / Server panes |
+| `dsh-tailscale-remote` | Tailscale.app (C5); inert until *Enable* | Settings → Tailscale remote / Server panes |
 | `tali-enforce-model-preset` | nothing (rules act only on their providers) | — |
-| `tali-browser-automation` | **Safari Technology Preview** + **Google Chrome** (A6) | `safari_*`, `chrome_*` (44 tools) |
-| `tali-dash-docsets` | **Dash 8** (A6) | `dash_list_docsets`, `dash_search`, `dash_get_page` |
+| `tali-browser-automation` | **Safari Technology Preview** + **Google Chrome** (A6) | `safari_*`, `chrome_*` |
+| `tali-dash-docsets` | **Dash 8** (A6) | `dash_*` |
 | `tali-local-model-supervisor` | afm (A4); only fires for the `apple` provider | — |
-| `tali-wolfram-kernel-supervisor` | **Mathematica / Wolfram 15+** (`/Applications/Wolfram.app`, ships the `Wolfram/AgentTools` paclet; defaults find both) | `wolfram_eval`, `wolfram_run`, `wolfram_show`, `wolfram_symbol`, `wolfram_lint`, `wolfram_kernel_*` |
+| `tali-wolfram-kernel-supervisor` | **Mathematica / Wolfram 15+** at `/Applications/Wolfram.app` (ships the `Wolfram/AgentTools` paclet; defaults find both) | `wolfram_*` |
 | `tali-foreign-link-opener` | only useful with a Safari "Add to Dock" web app; harmless otherwise | — |
 | `tali-session-introspect` | nothing | `transcript_*` |
 | `tali-fs-tools` | nothing | `list_dir`, `read_many`, `edit_many`, `search` |
 | `tali-settings-shortcut` | nothing | ⌘. toggles Settings |
 | `tali-session-title-slug` | nothing | `slug: prompt` naming |
-| `tali-remote-workspaces` | nothing (only meaningful on a Mac that controls remotes) | "Remotes" sidebar section |
+| `dsh-remote-workspaces` | nothing (only meaningful on a Mac that controls remotes) | "Remotes" sidebar section |
 
-Not in the live set, by choice: `agent-status-indicator` (floating status emoji in the chat area — add a bare `insert` row if wanted) and `preview-identity` (dev-overlay only; never load it in the live profile).
+Not installed, by choice: `agent-status-indicator` (floating status emoji;
+`pnpm dsh plugin --profile web add plugins/agent-status-indicator` if wanted)
+and `preview-identity` (dev-overlay only; never in a live profile). A plugin
+whose external app is missing does not break the boot — its tools fail at
+first use — so remove it or leave it.
+
+**Configuration.** The bundles' row configs are the plugins' schema defaults,
+and those equal Tali's live settings (`tailscale-remote` proxy `:3084` /
+relay `:3083`, `browser-automation` `subagents: true`, `wolfram` `theme: auto`,
+the `apple → minimal-no-tools` rule, …). `~/.dsh/profiles/web/cordis.patch.yml`
+(created by the first launch; `patchReload: live`) therefore stays **empty**
+unless you want to override a row by id — remember a patch replaces the row's
+whole `config`, so restate every key. Tali's only live additions are debug
+trace files, e.g.:
 
 ```yaml
-- insert:
-
-    # Tailscale remote at https://<node>.<tailnet>.ts.net/dsh/ plus this Mac's
-    # Dock app (~/Applications/DSH.app, WKWebView wrapper) and the always-on
-    # relay LaunchAgent that `tailscale serve` targets on :3083 and that starts
-    # `dsh web` on demand; the proxy itself listens on :3084. Inert until
-    # Settings → Tailscale remote → Enable (C5).
-    # Source: plugins/dsh-tailscale-remote; recipes: tailscale-remote-plugin.md, dock-app-via-tailnet.md
-    - id: tali-tailscale-remote
-      name: '/Users/tali/github/tali-dash-plugins/plugins/dsh-tailscale-remote/index.js'
-      config:
-        listenPort: 3084
-        publishPort: 3083                       # 0 = publish the proxy directly, no relay
-        relayCwd: /Users/tali/github/deepseek-harness
-        relayStart: pnpm dsh web --no-open
-
-    # Bind agent presets to model selections: tiny local models get tiny
-    # compositions. First matching rule wins; the catch-all restores the
-    # standard preset when a blank session moves to an unmapped model.
-    # Mid-session model changes never switch presets.
-    # Source: plugins/enforce-model-preset
-    - id: tali-enforce-model-preset
-      name: '/Users/tali/github/tali-dash-plugins/plugins/enforce-model-preset/index.js'
-      config:
-        rules:
-          - provider: apple
-            preset: minimal-no-tools
-          - provider: lmstudio
-            preset: minimal
-          - provider: '*'
-            preset: standard
-
-    # Per-session browser automation: safari_* (Safari Technology Preview,
-    # `safaridriver --mcp`) and chrome_* (Google Chrome via chrome-devtools-mcp),
-    # started on demand per chat. NEEDS: Safari Technology Preview + Google Chrome.
-    # Source: plugins/browser-automation; recipe: browser-automation-plugin.md
-    - id: tali-browser-automation
-      name: '/Users/tali/github/tali-dash-plugins/plugins/browser-automation/index.js'
-      config:
-        subagents: true   # each subagent may open its own browser
-        idleMinutes: 30
-        chrome:
-          headless: false
-        traceFile: /tmp/browser-automation-trace.log
-
-    # Dash (macOS docs browser) as native tools over Dash 8's loopback HTTP
-    # API; launches Dash hidden and enables its API server on demand.
-    # NEEDS: Dash 8. Source: plugins/dash-docsets; recipe: dash-docsets-plugin.md
-    - id: tali-dash-docsets
-      name: '/Users/tali/github/tali-dash-plugins/plugins/dash-docsets/index.js'
-      config:
-        traceFile: /tmp/dash-docsets-trace.log
-
-    # Host the AFM server (Apple Foundation on-device) from dsh itself: start
-    # on first apple/* selection, reuse across sessions, adopt a running
-    # instance, stop the owned child once idle. NEEDS: afm (A4).
-    # Source: plugins/local-model-supervisor; recipe: apple-foundation-model-provider.md
-    - id: tali-local-model-supervisor
-      name: '/Users/tali/github/tali-dash-plugins/plugins/local-model-supervisor/index.js'
-      config:
-        servers:
-          - id: afm
-            providers: [apple]
-            command: afm
-            args: ['--port', '9997']
-            healthUrl: http://127.0.0.1:9997/v1/models
-            idleMinutes: 15
-            startupTimeoutMs: 90000
-            logFile: /tmp/local-model-supervisor-afm.log
-
-    # Per-chat Wolfram Language kernels (Mathematica 15 AgentTools MCP server,
-    # one process per kernel, wl:<session>:<kernel>): wolfram_eval / wolfram_run /
-    # wolfram_show (retina plot shown inline to the user) / wolfram_symbol /
-    # wolfram_lint / wolfram_kernel_open|close|list. Kernels start on first use,
-    # close after idleMinutes unused. Graphics follow the GUI's light/dark
-    # appearance; PNGs land in ~/Library/Wolfram/DeepseekHarness.
-    # NEEDS: Mathematica/Wolfram 15+ at /Applications/Wolfram.app (the defaults
-    # locate the kernel and the highest installed Wolfram__AgentTools paclet;
-    # override with `kernel:` / `pacletDirectory:`).
-    # Source: plugins/wolfram-kernel-supervisor; recipe: wolfram-kernel-supervisor.md
-    - id: tali-wolfram-kernel-supervisor
-      name: '/Users/tali/github/tali-dash-plugins/plugins/wolfram-kernel-supervisor/index.js'
-      config:
-        subagents: true
-        idleMinutes: 60
-        theme: auto        # follow Settings ▸ Appearance; or light | dark
-        traceFile: /tmp/wolfram-kernel-supervisor-trace.log
-
-    # Dock-installed Safari web app (Safari ▸ Add to Dock): links leaving the
-    # DSH server open in real Safari instead of a new DSH window. Active only
-    # as an installed web app served from a loopback host; harmless otherwise.
-    # Source: plugins/foreign-link-opener; recipe: foreign-link-opener-plugin.md
-    - id: tali-foreign-link-opener
-      name: '/Users/tali/github/tali-dash-plugins/plugins/foreign-link-opener/index.js'
-      config:
-        app: /Applications/Safari.app
-        when: auto
-        loopbackOnly: true
-
-    # Cross-agent transcript introspection: transcript_find / transcript_outline /
-    # transcript_read / transcript_tool_stats / transcript_grep / transcript_event
-    # read OTHER sessions' transcripts (any workspace) through ctx.sessionQuery.
-    # Read-only. Source: plugins/session-introspect; recipe: session-introspect-plugin.md
-    - id: tali-session-introspect
-      name: '/Users/tali/github/tali-dash-plugins/plugins/session-introspect/index.js'
-      config:
-        scope: all
-        traceFile: /tmp/session-introspect-trace.log
-
-    # Batch filesystem tools beside read/edit/grep/glob: list_dir (directories
-    # included), read_many (several ranges per call; counts as reading for the
-    # read-before-edit guard), edit_many (validated before any write), search
-    # (ripgrep with context, files/count modes, include/exclude globs).
-    # Source: plugins/fs-tools; recipe: fs-tools-plugin.md
-    - id: tali-fs-tools
-      name: '/Users/tali/github/tali-dash-plugins/plugins/fs-tools/index.js'
-
-    # ⌘. (Ctrl+. off macOS) toggles the Settings panel. Browser-only client plugin.
-    # Source: plugins/settings-shortcut; recipe: settings-keyboard-shortcut-plugin.md
-    - id: tali-settings-shortcut
-      name: '/Users/tali/github/tali-dash-plugins/plugins/settings-shortcut/index.js'
-
-    # Name a New Session as you create it: a leading `some-slug: ` in the first
-    # prompt becomes the session title; the sidebar row previews it live.
-    # Browser-only client plugin. Source: plugins/session-title-slug; recipe: session-title-slug-plugin.md
-    - id: tali-session-title-slug
-      name: '/Users/tali/github/tali-dash-plugins/plugins/session-title-slug/index.js'
-
-    # Remote workspaces: sessions living on other DSH servers shown in a
-    # "Remotes" section under the local tree; their pages are framed
-    # same-origin through the local egress proxy /remote/<server>/. Registry:
-    # ~/.dsh/remote-workspaces.json. Source: plugins/dsh-remote-workspaces;
-    # recipe: remote-workspaces-plugin.md
-    - id: tali-remote-workspaces
-      name: '/Users/tali/github/tali-dash-plugins/plugins/dsh-remote-workspaces/index.js'
+- id: tali-browser-automation
+  config:
+    traceFile: /tmp/browser-automation-trace.log
 ```
 
 Optional, not a `tali-dash-plugins` plugin: Tali's patch also overrides the
 in-tree `session-title-llm` row (`style: slug`, `targetWords: 5`,
 `maxOutputTokens: 64`, …) so model-generated titles come out as
-`foo-bar-baz`, matching the hand-typed `slug:` convention. Leave it out
-unless you want that look.
+`foo-bar-baz`, matching the hand-typed `slug:` convention.
 
-Verify the composition without booting (expect every `tali-` row you kept):
-`pnpm dsh --profile web --dump-config | grep -n tali-`. A missing built
-`lib/client.js` (C2) or a `name:` path that does not exist fails the boot
-loudly — a missing *external app* does not.
+Verify the composition without booting (expect 12 `tali-` rows — the
+installer prints them too): `pnpm dsh --profile web --dump-config | grep -n 'id: tali-'`.
+
+> Do **not** also insert these plugins by absolute path in the profile patch
+> (the pre-2026-09-18 layout of Tali's own profile): a duplicate row id fails
+> the boot.
 
 **Stopping point:** `pnpm dsh web` now runs a complete local DSH with the
 plugins; everything below is the tailnet/Dock-app layer.
@@ -669,6 +559,8 @@ pgrep -fl 'afm --port 9997'
 | Two DSH tiles in the Dock | Dock plist `<data>` parsing trap; drag one off |
 | `resume failed … SessionAlreadyOwnedError` | two servers on one `$DSH_HOME` — never share a home between instances |
 | Plugin prints nothing, no error | `inject` names an unavailable service → PENDING; or a `dsh.client` package with no built `lib/client.js` (build it) |
+| Boot fails with a duplicate row id (`tali-…`) | the plugins are installed as bundles *and* inserted by path in `cordis.patch.yml`; delete the path inserts (C4) |
+| `pnpm install-plugins`: "lib/client.js is not built" / "no node_modules" | finish C2 for that plugin first |
 | `pnpm install` in a plugin fails on `link:` | the plugins repo is not a sibling of `deepseek-harness` under one parent directory (links are `../../../deepseek-harness/…`) |
 | `pnpm build` in `session-title-slug` / `settings-shortcut` / `agent-status-indicator`: "node_modules missing" | they have devDependencies (esbuild) — run `pnpm install` in every plugin first (C2) |
 | `~/.dsh/settings.yaml` missing after first launch | expected; the GUI creates it on the first provider save, or create it by hand (C3) |
