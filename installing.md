@@ -413,9 +413,8 @@ header comment) is `patchReload: live` — saving it reloads the running server.
 Scope: the hundreds of in-tree `@deepseek-ai/dsh-*` plugins come from the
 shipped `web` bundle and need no configuration — `pnpm dsh web` composes them.
 This patch only adds the **out-of-tree plugins from `tali-dash-plugins`** on
-top. Below is that set as it runs on Tali's Air (12 rows — `fs-tools`,
-`session-introspect`, `wolfram_*`, `safari_*` / `chrome_*`, `dash_*`, … — plus
-one config override). Paste it whole, then:
+top. Below is that set as it runs on Tali's Air: 12 rows, one per plugin
+directory in the repo that is meant for the live profile. Paste it whole, then:
 
 1. Replace `/Users/tali/github` with your absolute, expanded parent path
    (`/Users/<you>/<parent>`; no `~`, no `$PARENT`) — `sed -i '' "s#/Users/tali/github#$(cd "$PARENT" && pwd)#g" ~/.dsh/profiles/web/cordis.patch.yml`.
@@ -438,7 +437,6 @@ one config override). Paste it whole, then:
 | `tali-settings-shortcut` | nothing | ⌘. toggles Settings |
 | `tali-session-title-slug` | nothing | `slug: prompt` naming |
 | `tali-remote-workspaces` | nothing (only meaningful on a Mac that controls remotes) | "Remotes" sidebar section |
-| `session-title-llm` (config override) | nothing | slug-style titles |
 
 Not in the live set, by choice: `agent-status-indicator` (floating status emoji in the chat area — add a bare `insert` row if wanted) and `preview-identity` (dev-overlay only; never load it in the live profile).
 
@@ -578,18 +576,13 @@ Not in the live set, by choice: `agent-status-indicator` (floating status emoji 
     # recipe: remote-workspaces-plugin.md
     - id: tali-remote-workspaces
       name: '/Users/tali/github/tali-dash-plugins/plugins/dsh-remote-workspaces/index.js'
-
-# Session titles as slugs (foo-bar-baz), matching the hand-typed `slug:`
-# convention. `config` replaces the bundle row's wholesale.
-- id: session-title-llm
-  config:
-    targetWords: 5
-    targetCjkCharacters: 10
-    maxInputBytes: 4096
-    maxOutputTokens: 64
-    timeoutMs: 60000
-    style: slug
 ```
+
+Optional, not a `tali-dash-plugins` plugin: Tali's patch also overrides the
+in-tree `session-title-llm` row (`style: slug`, `targetWords: 5`,
+`maxOutputTokens: 64`, …) so model-generated titles come out as
+`foo-bar-baz`, matching the hand-typed `slug:` convention. Leave it out
+unless you want that look.
 
 Verify the composition without booting (expect every `tali-` row you kept):
 `pnpm dsh --profile web --dump-config | grep -n tali-`. A missing built
