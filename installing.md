@@ -24,12 +24,14 @@ There are two ways to get that onto a fresh Mac:
   The new Mac becomes a *remote* (headless server + its own Dock app) and
   appears in the deploying Mac's "Remotes" sidebar section.
 - **Path C — standalone install** on the new Mac itself (what Tali's Air runs,
-  minus the preview instance). Assembled from the live configuration and the
-  recipes; **not yet run end-to-end on a blank machine** — expect to fix
-  small things.
+  minus the preview instance). Steps C1–C4 (a working local DSH with the
+  plugins) were replayed on a second Mac on 2026-09-18; the optional layers
+  (Apple on-device model, Tailscale route + Dock app) are verified only on
+  Tali's machines.
 
-Both paths share the manual prerequisites in Part A. The preview instance
-(`~/.dsh-preview`, `DSH Preview.app`, port 3088) is deliberately left out.
+Both paths share the manual prerequisites in Part A; A4 (Apple model) is
+optional for both. The preview instance (`~/.dsh-preview`, `DSH Preview.app`,
+port 3088) is deliberately left out.
 
 ## Resulting topology (Path B, as on alpha)
 
@@ -53,11 +55,12 @@ Local fallback: http://127.0.0.1:3084/?token=<standing token>   (Dock app uses i
 | Logs (launchd stdout/stderr) | `~/dsh/logs/dsh.log`, `~/dsh/logs/afm.log` |
 | Dock app | `~/Applications/DSH.app` (`Contents/Resources/dsh-dock-app.json` holds url/fallback/tokenFile) |
 
-Path C differs: the checkout is `~/github/deepseek-harness` (it must sit next
-to `~/github/tali-dash-plugins` — the plugins link into it relatively) run
+Path C differs: the checkout is `<parent>/deepseek-harness` (it must sit next
+to `<parent>/tali-dash-plugins` — the plugins link into it relatively; the
+parent can be anywhere, e.g. `~/github` or `~/Documents/Symbolica`) run
 through `pnpm dsh web`, an always-on **relay** LaunchAgent (`io.github.taliesinb.dsh-web-relay`,
 port 3083) starts DSH on demand, and the plugins load from
-`~/github/tali-dash-plugins/plugins/*` via `~/.dsh/profiles/web/cordis.patch.yml`.
+`<parent>/tali-dash-plugins/plugins/*` via `~/.dsh/profiles/web/cordis.patch.yml`.
 
 ---
 
@@ -122,12 +125,21 @@ required)" otherwise. Note that a non-interactive `ssh host cmd` does **not**
 load `~/.zprofile`, so `brew`/`/opt/homebrew/bin` is not on PATH — the script
 wraps brew calls in `zsh -lc` for that reason; do the same when poking around.
 
-### A4. Apple Intelligence + AFM (the `apple/foundation` model)
+### A4. (Optional) Apple Intelligence + AFM (the `apple/foundation` model)
 
-The fork's default preview/remote model is Apple's on-device model, reached
-through **AFM** (`scouzi1966/maclocal-api`), an OpenAI-compatible Swift server
-on `127.0.0.1:9997` that the `local-model-supervisor` plugin starts on demand.
-Both pieces are manual:
+**Optional.** Alpha's default model is Apple's on-device model, reached
+through **AFM** (`scouzi1966/maclocal-api`), an OpenAI-compatible server on
+`127.0.0.1:9997` that the `local-model-supervisor` plugin starts on demand.
+It is a free, private, tool-less 4K chat model — useful as a default for a
+headless remote, not needed for agent work. If you skip it, also skip the
+`apple` provider block in C3 and drop (or leave inert — they only fire when
+the `apple` provider is selected) the `tali-local-model-supervisor` row and the
+`apple` rule in C4.
+
+Both pieces are manual. Note that afm is shipped as a **prebuilt arm64
+binary** (no Homebrew bottle, no build), so the machine's `swift --version`
+(CLT) is irrelevant; what matters is the **macOS major version**, because the
+release check targets the OS's Swift runtime / FoundationModels framework:
 
 1. System Settings → **Apple Intelligence & Siri** → enable, and wait for the
    model download. Until then every request fails with
@@ -135,14 +147,21 @@ Both pieces are manual:
 2. Install afm (needs brew in a login shell):
 
    ```sh
-   brew trust scouzi1966/afm            # Homebrew ≥ 6 refuses untrusted taps
-   brew install scouzi1966/afm/afm      # macOS 27 / Swift 6.4: current stable works (alpha: v0.9.19)
+   brew trust scouzi1966/afm            # Homebrew ≥ 6 refuses untrusted taps (third-party tap: your call)
+   # macOS 27 or newer — current stable works (alpha: v0.9.19):
+   brew install scouzi1966/afm/afm
+   # macOS 26.x — stable ≥ 0.9.17 aborts at startup with "503: Apple Foundation Models require the
+   # Swift 6.4 toolchain or newer"; pin 0.9.10 and fix its metallib packaging bug:
+   brew install scouzi1966/afm/afm@0.9.10 && brew link afm@0.9.10
+   KEG=/opt/homebrew/Cellar/afm@0.9.10/0.9.10
+   ln -sfn "$KEG/libexec/MacLocalAPI_MacLocalAPI.bundle" /opt/homebrew/bin/mlx-swift_Cmlx.bundle
+   ln -sfn ../libexec/MacLocalAPI_MacLocalAPI.bundle "$KEG/bin/mlx-swift_Cmlx.bundle"
    afm --version
    ```
 
-   On **macOS 26 / Swift 6.3** stable afm ≥ 0.9.17 aborts with `503 … Swift
-   6.4 toolchain`; install `scouzi1966/afm/afm@0.9.10` and add the metallib
-   symlinks — see `tali-dash-plugins/recipes/apple-foundation-model-provider.md` §1–2.
+   (Without the symlinks 0.9.10 dies on the first generation with `MLX error:
+   Failed to load the default metallib`. Full story:
+   `tali-dash-plugins/recipes/apple-foundation-model-provider.md` §1–2.)
 3. Smoke test (then kill it; DSH will manage it):
 
    ```sh
@@ -258,51 +277,57 @@ before syncing `uqr`; `enforce-model-preset` did not fire for sessions on the
 
 ## Part C — standalone install (the new Mac is the primary)
 
-This mirrors Tali's Air. Every step is taken from the live config
-(`~/.dsh/profiles/web/cordis.patch.yml`, `~/.dsh/settings.yaml`) and the
-recipes, but has not been replayed on a blank machine as one sequence.
+This mirrors Tali's Air. C1–C4 were replayed on a second Mac on 2026-09-18
+(macOS 26.6.2, node 25.8.1, pnpm 11.7.0, repos under
+`~/Documents/Symbolica/`): they work as written below. C5 and the optional
+Apple route have only been exercised on Tali's machines.
+
+**Layout.** The two repos must be **siblings** (the plugins link into the
+checkout relatively), but the parent directory can be anywhere. This part
+writes `$PARENT` for it — set it once, e.g. `PARENT=~/github` or
+`PARENT=~/Documents/Symbolica`. Two files need the **absolute, expanded**
+local path written in (no `~`, no variables): the profile patch in C4 and, if
+you use the dev overlay, `cordis.dev.yml`.
+
+**Stopping points.** After C4 you have a fully working local DSH with the
+plugins (`pnpm dsh web`). A4/C3-Apple (on-device model) and C5 (Tailscale
+route, relay LaunchAgent, Dock app) are independent optional layers.
 
 ### C1. Node, pnpm, git, and the fork
 
 ```sh
-brew install node pnpm git            # Air: node 26.7.0; the repo pins pnpm 11.7.0 via packageManager
-                                      # and pnpm ≥ 10 fetches/uses that version itself
-mkdir -p ~/github && cd ~/github
+brew install node pnpm git            # node ≥ 24 (Air: 26.7.0, tested: 25.8.1); the repo pins pnpm 11.7.0 via
+                                      # packageManager and pnpm ≥ 10 fetches/uses that version itself
+PARENT=~/github; mkdir -p "$PARENT" && cd "$PARENT"
 git clone git@github.com:taliesinb/deepseek-harness.git
 cd deepseek-harness
 git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
-git checkout feat/embed-session       # the live branch (Remotes, Move/Rehome, embed); see note
+git checkout feat/embed-session       # the live branch (Remotes, Move/Rehome, embed); pushed to origin 2026-09-18
 pnpm install
 pnpm run build                        # ~100 s
-pnpm dsh web --no-open                # first launch initialises ~/.dsh and ~/.dsh/profiles/web/cordis.patch.yml;
-                                      # prints http://127.0.0.1:3080/?token=… — open it once, then Ctrl-C
+pnpm dsh web --no-open                # first launch initialises ~/.dsh: profiles/web/cordis.patch.yml, .credentials.yaml
+                                      # (NOT settings.yaml — see C3); prints http://127.0.0.1:3080/?token=… — open it once, then Ctrl-C
 ```
 
-> **Branch note (2026-09-18):** `feat/embed-session` exists only in the Air's
-> local clone — `origin` has `master` and `fix/tailscale-mounting`. Push it
-> (`git push -u origin feat/embed-session`) before a fresh clone can check it
-> out. `fix/tailscale-mounting` is the minimum the tailnet path mount needs
-> (document-relative URLs); stock `master` loads the remote page's HTML and
-> then 404s on everything else.
-
-Node engines: `^22.19.0 || >=24.0.0`. Remove any stale `~/Library/pnpm`
-state if `pnpm` and the repo disagree about versions.
+`fix/tailscale-mounting` is the minimum the tailnet path mount needs
+(document-relative URLs); stock `master` loads the remote page's HTML and then
+404s on everything else. Node engines: `^22.19.0 || >=24.0.0`. Remove any
+stale `~/Library/pnpm` state if `pnpm` and the repo disagree about versions.
 
 ### C2. The plugins repo
 
 ```sh
-cd ~/github && git clone https://github.com/taliesinb/dsh-plugins tali-dash-plugins
-cd tali-dash-plugins
+cd "$PARENT" && git clone https://github.com/taliesinb/dsh-plugins tali-dash-plugins   # any directory name works;
+cd tali-dash-plugins                                                                     # it must sit next to deepseek-harness/
 ```
 
 Since plugins-repo commit `5785d17` (2026-09-18) every plugin's `link:`
 dependency is **relative** (`link:../../../deepseek-harness/vendor/cordis`
-…), so the only layout requirement is that the two repos are siblings under
-one parent directory (`~/github/deepseek-harness` next to
-`~/github/tali-dash-plugins`, as above). `browser-automation` and
+…), so with the sibling layout nothing needs rewriting in any `package.json`
+(confirmed on the second Mac). `browser-automation` and
 `wolfram-kernel-supervisor` depend on `@modelcontextprotocol/sdk` / `sharp`
 from npm at the checkout's versions instead of linking into its `.pnpm`
-store. Nothing to rewrite in `package.json`.
+store.
 
 The one remaining absolute-path file is `cordis.dev.yml` (dev overlay; row
 `name:` must be an absolute module path — the loader's `!!js` interpolation
@@ -310,14 +335,17 @@ applies to `config` only, never `name`). It matters only if you use the
 preview/dev overlay; otherwise skip it:
 
 ```sh
-sed -i '' "s#/Users/tali/github#$HOME/github#g" cordis.dev.yml
+sed -i '' "s#/Users/tali/github#$(cd "$PARENT" && pwd)#g" cordis.dev.yml
 ```
 
-Install and build (host-only plugins without deps need nothing):
+Install **every** plugin, then build the ones with a client bundle. The
+build-only plugins (`session-title-slug`, `settings-shortcut`,
+`agent-status-indicator`) have no runtime deps but need their devDependencies
+(esbuild, typescript) — `pnpm build` fails with "node_modules missing" until
+they are installed too:
 
 ```sh
-for p in dsh-tailscale-remote dsh-remote-workspaces foreign-link-opener wolfram-kernel-supervisor \
-         browser-automation dash-docsets fs-tools session-introspect; do (cd plugins/$p && pnpm install); done
+for p in plugins/*/; do (cd "$p" && pnpm install); done          # 14 plugins; the three plain-ESM ones are no-ops
 for p in dsh-tailscale-remote dsh-remote-workspaces session-title-slug settings-shortcut \
          agent-status-indicator foreign-link-opener wolfram-kernel-supervisor; do (cd plugins/$p && pnpm build); done
 ```
@@ -328,9 +356,16 @@ missing fails activation loudly at boot, so build before loading.
 
 ### C3. Providers and the on-device preset
 
-Add to `~/.dsh/settings.yaml` under `llm-pi-ai.providers` (the file exists
-after C1; cloud providers/keys are added through Settings → Providers in the
-GUI and land in `~/.dsh/.credentials.yaml`):
+**Cloud providers** (Anthropic, OpenAI, DeepSeek, …) are configured in the
+GUI: Settings → Providers / Models. Keys go to `~/.dsh/.credentials.yaml`
+(created on first launch); provider/model routes go to `~/.dsh/settings.yaml`,
+which the GUI **creates on first save** — it does *not* exist after C1. Do at
+least one provider through the GUI, or create the file yourself.
+
+**Optional — Apple on-device model** (only if you did A4). Create or extend
+`~/.dsh/settings.yaml` with this block under `llm-pi-ai.providers` (merge into
+the existing `llm-pi-ai:` key if the GUI already wrote one; the adapters re-read
+the file on the next request, no restart):
 
 ```yaml
 llm-pi-ai:
@@ -351,7 +386,8 @@ llm-pi-ai:
           maxTokens: 1024
 ```
 
-Create the user preset the Apple rule switches sessions to:
+Create the user preset the Apple rule switches sessions to (harmless to
+create even without the Apple route — it just appears in the preset picker):
 
 ```sh
 mkdir -p ~/.dsh/.agent-presets/minimal-no-tools
@@ -372,20 +408,23 @@ EOF
 
 ### C4. The web profile patch
 
-`~/.dsh/profiles/web/cordis.patch.yml` is `patchReload: live` — saving it
-reloads the running server. Minimal set (replace `/Users/tali` with the real
-home; `name:` must be absolute):
+`~/.dsh/profiles/web/cordis.patch.yml` (created by the first launch, with a
+header comment) is `patchReload: live` — saving it reloads the running server.
+Minimal set. **Every `name:` and `relayCwd` must be the absolute, expanded
+local path** (`/Users/<you>/<parent>/...`; no `~`, no `$PARENT`) — the
+examples below use `/Users/tali/github`:
 
 ```yaml
 - insert:
-    - id: tali-tailscale-remote
-      name: '/Users/tali/github/tali-dash-plugins/plugins/dsh-tailscale-remote/index.js'
+    - id: tali-tailscale-remote                   # inert until Settings → Tailscale remote → Enable (C5);
+      name: '/Users/tali/github/tali-dash-plugins/plugins/dsh-tailscale-remote/index.js'   # fine to add before Tailscale is set up
       config:
         listenPort: 3084
         publishPort: 3083                       # the relay (C5); 0 = publish the proxy directly, no relay
         relayCwd: /Users/tali/github/deepseek-harness
         relayStart: pnpm dsh web --no-open
-    - id: tali-enforce-model-preset
+    - id: tali-enforce-model-preset               # the `apple` rule and the supervisor row below only act when the
+                                                  # `apple` provider is selected; drop them if you skipped A4/C3-Apple
       name: '/Users/tali/github/tali-dash-plugins/plugins/enforce-model-preset/index.js'
       config:
         rules:
@@ -432,14 +471,25 @@ Optional rows, each gated on A6: `tali-browser-automation`, `tali-dash-docsets`,
 `tali-wolfram-kernel-supervisor`, `tali-notion-mcp`, `tali-foreign-link-opener`
 (only meaningful for a Safari "Add to Dock" web app, which the WKWebView app
 replaces). Copy their blocks verbatim from the Air's file. Verify the
-composition without booting:
+composition without booting (expect the eight `tali-` rows above):
 `pnpm dsh --profile web --dump-config | grep -n tali-`.
 
-### C5. Relay LaunchAgent, enable the route, build the Dock app
+**Stopping point:** `pnpm dsh web` now runs a complete local DSH with the
+plugins; everything below is the tailnet/Dock-app layer.
+
+### C5. (Optional) Relay LaunchAgent, enable the route, build the Dock app
+
+Prerequisites from Part A: Tailscale.app **running and logged in** to the
+tailnet (`tailscale status --self` shows your node; C5 does nothing useful
+otherwise — the Dock app would only ever use its loopback fallback), and the
+Command Line Tools (A1) for `swiftc`. Side effects to be aware of: a
+LaunchAgent that starts at login (`io.github.taliesinb.dsh-web-relay`,
+visible in Login Items as `dsh-web-relay`), a published `tailscale serve`
+route reachable by anyone your tailnet ACL admits, and a **Dock tile**.
 
 ```sh
-cd ~/github/tali-dash-plugins/plugins/dsh-tailscale-remote
-pnpm relay:install --cwd ~/github/deepseek-harness --start "pnpm dsh web --no-open"
+cd "$PARENT"/tali-dash-plugins/plugins/dsh-tailscale-remote
+pnpm relay:install --cwd "$(cd "$PARENT"/deepseek-harness && pwd)" --start "pnpm dsh web --no-open"
 #  → ~/Library/LaunchAgents/io.github.taliesinb.dsh-web-relay.plist, listens :3083, relays to :3084,
 #    starts `dsh web` (through zsh -lc) when it is down. Logs: ~/.dsh/logs/{relay,dsh-web}.log
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/     # 503 splash → DSH starts (~3 s) → 401
@@ -505,6 +555,9 @@ pgrep -fl 'afm --port 9997'
 | `resume failed … SessionAlreadyOwnedError` | two servers on one `$DSH_HOME` — never share a home between instances |
 | Plugin prints nothing, no error | `inject` names an unavailable service → PENDING; or a `dsh.client` package with no built `lib/client.js` (build it) |
 | `pnpm install` in a plugin fails on `link:` | the plugins repo is not a sibling of `deepseek-harness` under one parent directory (links are `../../../deepseek-harness/…`) |
+| `pnpm build` in `session-title-slug` / `settings-shortcut` / `agent-status-indicator`: "node_modules missing" | they have devDependencies (esbuild) — run `pnpm install` in every plugin first (C2) |
+| `~/.dsh/settings.yaml` missing after first launch | expected; the GUI creates it on the first provider save, or create it by hand (C3) |
+| afm: `503 … Swift 6.4 toolchain or newer` | macOS 26.x with stable afm — pin `afm@0.9.10` + metallib symlinks (A4); the local CLT `swift --version` is irrelevant (prebuilt binary) |
 
 ## Uninstall / rollback
 
@@ -512,7 +565,7 @@ Path B host: `launchctl bootout gui/$(id -u)/ai.symbolica.dsh-remote; rm ~/Libra
 /Applications/Tailscale.app/Contents/MacOS/Tailscale serve --https=443 --set-path /dsh off; rm -rf ~/dsh ~/.local/node ~/Applications/DSH.app`
 (keep or delete `~/.dsh` — sessions live there).
 
-Path C: `cd ~/github/tali-dash-plugins/plugins/dsh-tailscale-remote && pnpm dock-app:uninstall --name DSH && pnpm relay:uninstall`,
+Path C: `cd <parent>/tali-dash-plugins/plugins/dsh-tailscale-remote && pnpm dock-app:uninstall --name DSH && pnpm relay:uninstall`,
 then `tailscale serve --https=443 --set-path /dsh off` and drop the rows from the profile patch.
 
 ## Sources
