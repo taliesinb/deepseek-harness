@@ -405,14 +405,17 @@ cat > ~/.dsh/.agent-presets/minimal-no-tools/agent.cordis.yml <<'EOF'
 EOF
 ```
 
-### C4. The web profile patch — the complete set
+### C4. The web profile patch — the `tali-dash-plugins` rows
 
 `~/.dsh/profiles/web/cordis.patch.yml` (created by the first launch, with a
 header comment) is `patchReload: live` — saving it reloads the running server.
 
-Below is the **complete** set of `tali-dash-plugins` rows from Tali's Air —
-every plugin that repo provides (`fs-tools`, `session-introspect`,
-`wolfram_*`, `safari_*` / `chrome_*`, `dash_*`, …). Paste it whole, then:
+Scope: the hundreds of in-tree `@deepseek-ai/dsh-*` plugins come from the
+shipped `web` bundle and need no configuration — `pnpm dsh web` composes them.
+This patch only adds the **out-of-tree plugins from `tali-dash-plugins`** on
+top. Below is that set as it runs on Tali's Air (12 rows — `fs-tools`,
+`session-introspect`, `wolfram_*`, `safari_*` / `chrome_*`, `dash_*`, … — plus
+one config override). Paste it whole, then:
 
 1. Replace `/Users/tali/github` with your absolute, expanded parent path
    (`/Users/<you>/<parent>`; no `~`, no `$PARENT`) — `sed -i '' "s#/Users/tali/github#$(cd "$PARENT" && pwd)#g" ~/.dsh/profiles/web/cordis.patch.yml`.
