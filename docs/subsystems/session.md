@@ -841,6 +841,24 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('fork') fork(request: SessionForkRequest): Promise<SessionForkValue>
 
 /**
+ * Move one Session (with its same-cwd subagent children) to another
+ * Workspace: relocate the stored log under the new cwd, re-account it in
+ * the Workspace registry, and leave the Agent a notice for its next step.
+ * A resident Agent is refused unless `stopLive` retires it first.
+ * @param request - Session, destination Workspace or directory, and live policy.
+ * @returns the destination Workspace and every Session that moved.
+ */
+@Remote('move') move(request: SessionMoveRequest): Promise<SessionMoveValue>
+
+/**
+ * Move several Sessions to one Workspace, reporting skips per Session
+ * instead of failing the batch — the basis of "rehome this Workspace".
+ * @param request - Sessions, destination, and live policy.
+ * @returns moved ids and skipped Sessions with reasons.
+ */
+@Remote('moveMany') moveMany(request: SessionMoveManyRequest): Promise<SessionMoveManyValue>
+
+/**
  * Admit one prompt after explicitly resuming its Session.
  * @param request - Session identity, prompt content, source metadata, and delivery mode.
  * @param signal - caller cancellation before prompt admission begins.

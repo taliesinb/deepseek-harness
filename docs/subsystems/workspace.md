@@ -345,6 +345,14 @@ Host service backing the generated `ctx.remote.workspace` namespace.
  * @returns baseline followed by ordered Workspace increments.
  */
 @Remote({ mode: 'stream' }) follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>
+
+/**
+ * The complete Workspace baseline as one unary read, for callers that
+ * cannot hold a stream open (another Host mirroring this one's Workspaces).
+ * Same value a `follow` generation opens with.
+ * @returns every Workspace in registry order plus the archived Session ids.
+ */
+@Remote('list') list(): WorkspaceBaseline
 ```
 
 Source: [`packages/api/workspace-controller/src/index.ts`](../../packages/api/workspace-controller/src/index.ts)
@@ -511,6 +519,15 @@ unarchiveSession(sessionId: SessionId): Promise<void>
  * @returns the workspace owning the canonical path, when one exists.
  */
 async resolveByPath(path: string): Promise<Workspace | undefined>
+
+/**
+ * Forget the cached stored header of one session so the next membership
+ * check re-reads it from persistence. Stored headers are immutable except
+ * for a relocation (`sessionPersistence.relocate`), whose caller invokes
+ * this before re-attaching the moved session elsewhere.
+ * @param id - the relocated session.
+ */
+forgetSessionHeader(id: SessionId): void
 ```
 
 Types: [SessionId](core.md)

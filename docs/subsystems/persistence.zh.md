@@ -408,9 +408,47 @@ abstract stat(id: SessionId, options?: SessionPersistenceStatOptions): Promise<S
  * @returns one snapshot per stored session.
  */
 abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+/**
+ * Optional: move one cold stored session to another working directory. The
+ * header's `cwd` is the session's workspace membership, so this is what a
+ * "move session to workspace" means at the storage layer. A backend that
+ * implements it rewrites the header, appends the requested events as one
+ * durable operation, publishes the artifact where the new cwd places it, and
+ * retires the old one. A session that is open for writing (a live Agent, in
+ * this or another process) is refused with `SessionAlreadyOwnedError`; the
+ * caller decides whether to stop it first. Backends that cannot relocate
+ * leave this undefined and callers fail with an explicit unsupported error.
+ * @param request - the session, its destination cwd, and events to append.
+ * @returns the stored header afterwards and whether anything moved.
+ */
+relocate?(request: SessionRelocateRequest): Promise<SessionRelocateResult>
 ```
 
 Types: [SessionId](core.zh.md)
+
+Source: [`packages/session/session-persistence/src/index.ts`](../../packages/session/session-persistence/src/index.ts)
+
+<a id="session-persistence-events"></a>
+
+### `session-persistence/*` events
+
+<a id="session-persistencestored--emit"></a>
+
+#### `session-persistence/stored` — emit
+
+A stored session appeared or changed identity outside the live store — created cold by an import, or relocated to another cwd — so list owners refresh their row for it. Carries the header now stored.
+
+```ts cordis-catalog
+/**
+ * A stored session appeared or changed identity outside the live store —
+ * created cold by an import, or relocated to another cwd — so list owners
+ * refresh their row for it. Carries the header now stored.
+ * @param header - the stored header after the change.
+ * @mode emit
+ */
+'session-persistence/stored'(header: SessionHeader): void
+```
 
 Source: [`packages/session/session-persistence/src/index.ts`](../../packages/session/session-persistence/src/index.ts)
 <!-- END GENERATED cordis-surface -->

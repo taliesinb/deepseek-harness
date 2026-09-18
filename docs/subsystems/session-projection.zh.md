@@ -157,6 +157,19 @@ cachedSnapshot( meta: SessionHeader, inheritedEventCount: SessionLogOffset, keys
 cachedPredecessorTitle( meta: SessionHeader, inheritedEventCount: SessionLogOffset, ): ProjectionSnapshot | undefined
 
 /**
+ * Re-bind one stored record to a relocated session's header. A relocation
+ * (`sessionPersistence.relocate`) changes only the header's `cwd`; every
+ * cached projection (title, stats, outline…) is cwd-independent, so the
+ * record stays valid once its identity names the new cwd. Without this the
+ * moved session lists without title hints until its next activation.
+ * @param previous - the header the record was written under.
+ * @param current - the header stored now (same session, new cwd).
+ * @param inheritedEventCount - exact inherited cut of the lifecycle.
+ * @returns true when a matching record was re-bound.
+ */
+async rebind(previous: SessionHeader, current: SessionHeader, inheritedEventCount: SessionLogOffset): Promise<boolean>
+
+/**
  * Hydrate projection cells for an already-prepared Session without another
  * persistence read. The cache seeds matching rows; the supplied exact log
  * advances every unit to the observation cut. No checkpoint is written
