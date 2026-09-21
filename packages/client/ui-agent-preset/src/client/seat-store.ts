@@ -114,6 +114,23 @@ export class AgentPresetSeatController {
   }
 
   /**
+   * Follow the current session's composition. `load()` reads the session's
+   * `agentPreset` projection once; a switch made by anyone but this chip — a
+   * host plugin binding presets to model selections, another tab, a command —
+   * arrives as a later projection update and used to stay invisible until a
+   * reload. Only the displayed value follows; a staged pick keeps precedence
+   * (it is about to be applied), and a busy apply publishes its own result.
+   */
+  followSession(): void {
+    if (this.staged.id !== undefined || this.store.getSnapshot().busy) return
+    const session = this.currentSession()
+    if (session === undefined) return
+    const current = presetOf(session)
+    if (current === undefined || current === this.store.getSnapshot().current) return
+    this.set({ current })
+  }
+
+  /**
    * Stage one preset for the next session, applying it immediately when a
    * blank session is already current.
    *

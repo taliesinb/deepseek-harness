@@ -81,8 +81,15 @@ export function apply(ctx: ClientContext): void {
         : undefined
     }, staged)
     seats.set(binding, seat)
-    binding.ctx.effect(() => () => {
-      seats.delete(binding)
+    const follow = seat
+    binding.ctx.effect(() => {
+      // The session summary carries the composition as a projection value;
+      // re-derive the chip when it changes (see followSession).
+      const unsubscribe = scope.sessions.list.subscribe(() => { follow.followSession() })
+      return () => {
+        unsubscribe()
+        seats.delete(binding)
+      }
     }, 'ui-agent-preset: Provider binding')
     return seat
   }
