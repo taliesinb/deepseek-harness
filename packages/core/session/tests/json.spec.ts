@@ -154,6 +154,31 @@ describe('snapshotJsonValue', () => {
     expect(snapshotJsonValue({ value: undefined })).toBeUndefined()
   })
 
+  it('accepts plain objects and arrays under JavaScriptCore\'s native-function rendering', () => {
+    // Safari / WKWebView render `Function.prototype.toString(Object)` as
+    // "function Object() {\n    [native code]\n}"; V8 keeps it on one line.
+    // The intrinsic-prototype check must accept both, or every object fails
+    // the lossless-JSON test in the browser (seen 2026-09-21: a Session's
+    // assistant-stream baseline refused with "raw chunk must be a lossless
+    // JSON object" in the Dock app only).
+    const original = Object.getOwnPropertyDescriptor(Function.prototype, 'toString') as PropertyDescriptor
+    const render = original.value as (this: unknown) => string
+    const jsc = function (this: unknown): string {
+      const source = render.call(this)
+      return source.replace(/^(function \w+\(\)) \{ \[native code\] \}$/, '$1 {\n    [native code]\n}')
+    }
+    Object.defineProperty(Function.prototype, 'toString', { ...original, value: jsc })
+    try {
+      expect(Function.prototype.toString.call(Object)).toBe('function Object() {\n    [native code]\n}')
+      expect(isJsonValue({ type: 'block-start', index: 0 })).toBe(true)
+      expect(isJsonValue([{ nested: [1, 'two'] }])).toBe(true)
+      expect(snapshotJsonValue({ chunk: { type: 'finish', reason: 'stop' } })).toEqual({ chunk: { type: 'finish', reason: 'stop' } })
+      expect(snapshotJsonValue(objectWithForgedIntrinsicPrototype())).toBeUndefined()
+    } finally {
+      Object.defineProperty(Function.prototype, 'toString', original)
+    }
+  })
+
   it('preserves a literal __proto__ JSON key without changing the snapshot prototype', () => {
     const source = Object.create(null) as Record<string, unknown>
     source.__proto__ = { safe: true }

@@ -14,6 +14,19 @@ export function assertNever(value: never, context?: string): never {
   throw new Error(`unreachable variant${context ? ` in ${context}` : ''}: ${rendered}`)
 }
 
+/**
+ * The source text engines render for a native constructor. The spec fixes
+ * only the shape (`function <name>() { [native code] }`), not the
+ * whitespace: V8 prints it on one line, JavaScriptCore (Safari, WKWebView)
+ * breaks and indents the body. A user function cannot produce this text —
+ * `[native code]` is not a valid statement — so the loose whitespace keeps
+ * the forgery guarantee.
+ */
+const NATIVE_CONSTRUCTOR_SOURCE: Record<'Array' | 'Object', RegExp> = {
+  Array: /^function Array\(\) \{\s*\[native code\]\s*\}$/,
+  Object: /^function Object\(\) \{\s*\[native code\]\s*\}$/,
+}
+
 /** Whether a realm-owned intrinsic prototype is backed by its native constructor. */
 function hasIntrinsicConstructor(prototype: object, name: 'Array' | 'Object'): boolean {
   const descriptor = Object.getOwnPropertyDescriptor(prototype, 'constructor')
@@ -22,7 +35,7 @@ function hasIntrinsicConstructor(prototype: object, name: 'Array' | 'Object'): b
   try {
     return constructor.name === name
       && constructor.prototype === prototype
-      && Function.prototype.toString.call(constructor) === `function ${name}() { [native code] }`
+      && NATIVE_CONSTRUCTOR_SOURCE[name].test(Function.prototype.toString.call(constructor))
   } catch {
     return false
   }
