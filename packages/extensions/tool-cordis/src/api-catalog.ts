@@ -1750,6 +1750,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'moved ids and skipped Sessions with reasons.',
       },
       {
+        signature: '@Remote(\'copy\') copy(request: SessionCopyRequest): Promise<SessionCopyValue>',
+        description: 'Copy one Session (with its subagent descendants) into a Workspace as a new Session: the source\'s durable log is read and stored again under the destination cwd with fresh ids; the source, running or not, is untouched. A source mid-turn is refused until the caller decides whether to drop the turn in progress (`truncate`) or keep it closed as interrupted.',
+        parameters: [{ name: 'request', description: 'source, destination Workspace or directory, mid-turn policy, optional title.' }],
+        returns: 'the new root id, every stored id, and whether a turn was dropped.',
+      },
+      {
         signature: '@Remote(\'prompt\') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
         parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
@@ -5762,6 +5768,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionControlFrame',
     declaration: 'export type SessionControlFrame = {\n    readonly type: \'baseline\';\n    readonly value: SessionControlBaseline;\n} | {\n    readonly type: \'jobs\';\n    readonly sessionId: SessionId;\n    readonly jobs: readonly SessionJob[];\n} | ({\n    readonly type: \'projection\';\n} & SessionProjectionUpdate);',
+  },
+  {
+    name: 'SessionCopyRequest',
+    declaration: 'export interface SessionCopyRequest {\n    readonly sessionId: SessionId;\n    readonly destination: SessionMoveDestination;\n    readonly truncate?: boolean;\n    readonly title?: string;\n    readonly notify?: boolean;\n}',
+  },
+  {
+    name: 'SessionCopyValue',
+    declaration: 'export interface SessionCopyValue {\n    readonly sessionId: SessionId;\n    readonly sourceSessionId: SessionId;\n    readonly workspaceId: WorkspaceId;\n    readonly copied: readonly SessionId[];\n    readonly truncated: boolean;\n}',
   },
   {
     name: 'SessionCreateRequest',

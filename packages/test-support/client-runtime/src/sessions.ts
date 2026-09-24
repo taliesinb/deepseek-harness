@@ -311,7 +311,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'create' | 'setSubagentCatalogOpen' | 'refreshSubagents' | 'refresh' | 'search' | 'fork' | 'move' | 'moveMany'
+    method: 'create' | 'setSubagentCatalogOpen' | 'refreshSubagents' | 'refresh' | 'search' | 'fork' | 'move' | 'moveMany' | 'copy'
     args: unknown[]
   }[] = []
 
@@ -699,6 +699,17 @@ export class TestSessions implements ISessions {
     this.calls.push({ method: 'moveMany', args: [opts] })
     const workspaceId = 'workspaceId' in opts.destination ? opts.destination.workspaceId : ('' as never)
     return Promise.resolve({ ok: true, value: { workspaceId, moved: [...opts.sessionIds], skipped: [] } })
+  }
+
+  /** Recorded copy stub: reports a copy under a synthetic id with nothing stored. */
+  copy(opts: Parameters<ISessions['copy']>[0]): ReturnType<ISessions['copy']> {
+    this.calls.push({ method: 'copy', args: [opts] })
+    const workspaceId = 'workspaceId' in opts.destination ? opts.destination.workspaceId : ('' as never)
+    const sessionId = `${opts.sessionId}-copy` as typeof opts.sessionId
+    return Promise.resolve({
+      ok: true,
+      value: { sessionId, sourceSessionId: opts.sessionId, workspaceId, copied: [sessionId], truncated: false },
+    })
   }
 
   /**

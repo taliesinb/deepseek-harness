@@ -1,15 +1,24 @@
 /**
- * Import one Session-log ZIP — the archive `session.export` produces (root log,
- * `subagents/<id>/session.jsonl` descendants, `media/` and `files/`
- * attachments) — as new stored Sessions of this Host under one Workspace.
- * This is the receiving half of a cross-host move.
+ * Store Session logs that came from elsewhere as new stored Sessions of this
+ * Host under one Workspace. Two entry points share the storing half:
+ *
+ * - `importSessionZip` — the receiving half of a cross-host move or copy: one
+ *   Session-log ZIP as `session.export` produces it (root log,
+ *   `subagents/<id>/session.jsonl` descendants, `media/` and `files/`
+ *   attachments);
+ * - `storeSessionLogs` — already-parsed logs, which a same-host copy reads
+ *   straight from persistence.
  *
  * Attachments are content-addressed (`sha256:` ids), so saving the bytes here
  * reproduces the ids the logs reference; no event rewriting is needed for
- * them. Each log's header gets the destination cwd; an id that already exists
- * here is replaced by a fresh one (descendants are re-parented to match). The
- * root receives one `agent/inbox/spliced` notice for its next step naming the
- * origin, so the Agent knows earlier file references may not resolve.
+ * them. Each log's header gets the destination cwd. In `move` mode an id that
+ * already exists here is replaced by a fresh one (descendants are re-parented
+ * to match) and the root receives one `agent/inbox/spliced` notice for its
+ * next step naming the origin, so the Agent knows earlier file references may
+ * not resolve. In `copy` mode every log gets a fresh id, a source mid-turn is
+ * shaped by {@link shapeCopiedLog} (dropped whole or closed as interrupted),
+ * descendants born in a dropped turn are left out, an optional title is
+ * recorded, and the notice tells the Agent it is a copy.
  */
 import { randomUUID } from 'node:crypto'
 import { unzipSync } from 'fflate'
@@ -23,17 +32,36 @@ import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import { shapeCopiedLog } from './shape.ts'
 
 /** Message source recorded on the import notice. */
 export const SESSION_IMPORT_NOTICE_PLUGIN = 'session-import'
 
+/** Message source recorded on the copy notice. */
+export const SESSION_COPY_NOTICE_PLUGIN = 'session-copy'
+
 /** What the caller decides about the destination. */
 export interface SessionImportTarget {
   readonly workspace: Workspace
-  /** Where the bundle came from, for the Agent's notice (`alpha.tailnet/dsh`, a path…). */
+  /** Where the logs came from, for the Agent's notice (`alpha.tailnet/dsh`, a workspace…). */
   readonly origin: string
-  /** Keep the exported ids when free here (default true); false always re-ids. */
+  /**
+   * `move` (default): the Sessions continue here — ids kept when free, the
+   * notice says "imported". `copy`: the originals live on — fresh ids always,
+   * mid-turn shaping, optional title, the notice says "copy".
+   */
+  readonly mode?: 'move' | 'copy'
+  /** Keep the exported ids when free here (default true in `move` mode); `copy` mode always re-ids. */
   readonly keepIds?: boolean
+  /** `copy` mode: drop a turn in progress instead of closing it as interrupted (default false). */
+  readonly truncate?: boolean
+  /** `copy` mode: title recorded on the copied root (a `session/title` event); omitted keeps the source's. */
+  readonly title?: string
+  /**
+   * Whether the logs come from another host (default true): the notice then
+   * warns that files referenced earlier may not exist here.
+   */
+  readonly crossHost?: boolean
   /** Append the notice to the root (default true). */
   readonly notify?: boolean
   readonly signal?: AbortSignal
@@ -46,11 +74,13 @@ export interface ImportedSession {
   readonly parentSessionId?: SessionId
 }
 
-/** Outcome of one import. */
+/** Outcome of one import or copy. */
 export interface SessionImportResult {
   readonly sessionId: SessionId
   readonly imported: readonly ImportedSession[]
   readonly attachments: number
+  /** `copy` mode: whether the root's turn in progress was dropped. */
+  readonly truncated: boolean
 }
 
 /** Root/subagent log entries, any format generation name (`session.jsonl`, `session.v3.jsonl`). */
@@ -62,14 +92,15 @@ const MEDIA_TYPES: Record<string, ImageMediaType> = {
   png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
 }
 
-interface ParsedLog {
-  header: SessionHeader
-  events: SessionEvent[]
-  inheritedEventCount: SessionLogOffset
+/** One Session log ready to be stored: header, events, and the fork-inherited cut. */
+export interface ParsedSessionLog {
+  readonly header: SessionHeader
+  readonly events: readonly SessionEvent[]
+  readonly inheritedEventCount: SessionLogOffset
 }
 
 /** Parse one exported JSONL text through the current format's strict restore. */
-function parseLog(text: string, label: string): ParsedLog {
+function parseLog(text: string, label: string): ParsedSessionLog {
   const lines = text.split('\n').filter(line => line !== '')
   if (lines.length === 0) throw new Error(`${label}: empty log`)
   let headerLine: unknown
@@ -120,18 +151,156 @@ function parseLog(text: string, label: string): ParsedLog {
   return { header, events, inheritedEventCount: SessionLogOffset(inherited) }
 }
 
-function noticeText(origin: string, workspace: Workspace, exportedId: SessionId, newId: SessionId): string {
+function importNoticeText(target: SessionImportTarget, exportedId: SessionId, newId: SessionId): string {
+  const { workspace } = target
   const renamed = exportedId === newId ? '' : ` Its id changed from \`${exportedId}\` to \`${newId}\`.`
-  return `<system-reminder>NOTE: this session was imported from ${origin} into the workspace \`${workspace.title}\` (${workspace.path}) `
+  return `<system-reminder>NOTE: this session was imported from ${target.origin} into the workspace \`${workspace.title}\` (${workspace.path}) `
     + `on this host.${renamed} Files referenced earlier in the conversation lived on the original host and may not exist here; `
     + 're-read anything you need from the new workspace before relying on it.</system-reminder>'
+}
+
+/**
+ * The notice text an Agent reads on its next step after a copy.
+ * @param target - destination and origin of the copy.
+ * @param sourceId - the id of the original Session.
+ * @param shape - what the copy did to a turn in progress.
+ * @returns the complete reminder text.
+ */
+export function sessionCopyNoticeText(
+  target: Pick<SessionImportTarget, 'workspace' | 'origin' | 'crossHost'>,
+  sourceId: SessionId,
+  shape: { readonly openTurn: boolean; readonly truncated: boolean },
+): string {
+  const { workspace } = target
+  const where = target.crossHost === false ? '' : ' on this host'
+  const files = target.crossHost === false
+    ? ' Earlier file references may need to be re-read from the new location.'
+    : ' Files referenced earlier in the conversation lived on the original host and may not exist here; re-read anything you need from the new workspace before relying on it.'
+  const turn = !shape.openTurn
+    ? ''
+    : shape.truncated
+      ? ' A turn was in progress when the copy was made; that turn, and the prompt that started it, are not part of this copy.'
+      : ' A turn was in progress when the copy was made; it is recorded here as interrupted, and the outcome of any tool call it had pending is unknown.'
+  return `<system-reminder>NOTE: this session is a copy of session \`${sourceId}\` from ${target.origin}, made on ${new Date().toISOString()} `
+    + `into the workspace \`${workspace.title}\` (${workspace.path})${where}. The original continues separately; nothing done here affects it.`
+    + `${turn}${files}</system-reminder>`
+}
+
+/**
+ * Store parsed Session logs — one root and its subagent descendants — as new
+ * Sessions of this Host under a Workspace. Attachments must already be here.
+ * @param ctx - Host context carrying persistence and the projection cache.
+ * @param logs - the root log and every descendant log (any order).
+ * @param target - destination Workspace, origin label, mode and options.
+ * @param attachmentCount - how many attachments the caller saved, echoed in the result.
+ * @returns the new root id and every stored Session.
+ */
+export async function storeSessionLogs(
+  ctx: Context,
+  logs: { readonly root: ParsedSessionLog; readonly children: readonly ParsedSessionLog[] },
+  target: SessionImportTarget,
+  attachmentCount = 0,
+): Promise<SessionImportResult> {
+  const persistence = ctx.get('sessionPersistence')
+  if (persistence === undefined) throw new Error('session import is unavailable: missing session-persistence service')
+  const { signal } = target
+  const copy = target.mode === 'copy'
+  signal?.throwIfAborted()
+
+  // Shape every log first: a copy of a mid-turn source drops or closes the
+  // open turn, and descendants born inside a dropped turn are left out.
+  const rootShape = copy ? shapeCopiedLog(logs.root.events, { truncate: target.truncate === true }) : undefined
+  const children = logs.children.filter(child => rootShape?.cutTime === undefined || child.header.createdAt < rootShape.cutTime)
+
+  // Ids: a copy always mints; an import keeps when free here, else mints.
+  // Children follow their parent's mapping.
+  const idMap = new Map<SessionId, SessionId>()
+  const assign = async (exported: SessionId): Promise<SessionId> => {
+    const known = idMap.get(exported)
+    if (known !== undefined) return known
+    let chosen = exported
+    if (copy || target.keepIds === false || (await persistence.stat(exported)) !== undefined) {
+      chosen = brandString<SessionId>(`session-${randomUUID()}`)
+    }
+    idMap.set(exported, chosen)
+    return chosen
+  }
+  const rootId = await assign(logs.root.header.id)
+  for (const child of children) await assign(child.header.id)
+
+  const store = async (log: ParsedSessionLog, isRoot: boolean): Promise<ImportedSession> => {
+    signal?.throwIfAborted()
+    const sessionId = idMap.get(log.header.id) as SessionId
+    const parent = log.header.parentSession === undefined ? undefined : idMap.get(log.header.parentSession) ?? log.header.parentSession
+    const header: SessionHeader = {
+      ...log.header,
+      id: sessionId,
+      cwd: target.workspace.path,
+      ...(parent === undefined ? {} : { parentSession: parent }),
+    }
+    const shape = isRoot ? rootShape : copy ? shapeCopiedLog(log.events, { truncate: target.truncate === true }) : undefined
+    const events = shape === undefined ? [...log.events] : shape.events
+    const nextSeq = (): SessionSeq => SessionSeq((events.at(-1)?.seq ?? -1) + 1)
+    if (isRoot && copy && target.title !== undefined && target.title.trim() !== '') {
+      events.push({
+        type: 'session/title',
+        seq: nextSeq(),
+        time: Date.now(),
+        data: { title: target.title.trim(), messageSeqs: [], source: { kind: 'user' } },
+      })
+    }
+    if (isRoot && target.notify !== false) {
+      const text = copy
+        ? sessionCopyNoticeText(target, log.header.id, shape ?? { openTurn: false, truncated: false })
+        : importNoticeText(target, log.header.id, sessionId)
+      events.push({
+        type: 'agent/inbox/spliced',
+        seq: nextSeq(),
+        time: Date.now(),
+        data: {
+          target: 'next-step',
+          start: 0,
+          inserted: [createUserMessage({
+            content: [{ type: 'text', text }],
+            source: { kind: 'plugin', plugin: copy ? SESSION_COPY_NOTICE_PLUGIN : SESSION_IMPORT_NOTICE_PLUGIN },
+          })],
+        },
+      })
+    }
+    const handle = await persistence.create(header, {
+      ...(signal === undefined ? {} : { signal }),
+      ...(header.isSeeded ? { inheritedEventCount: log.inheritedEventCount } : {}),
+    })
+    try {
+      if (events.length > 0) await handle.append(events)
+      await handle.flush()
+    } finally {
+      await handle.close()
+    }
+    // Seed this host's projection cache (title, stats, outline…) from the
+    // stored log, so the row lists with its title rather than the directory
+    // name until first open. Fail-soft: the cache is a convenience.
+    try {
+      ctx.get('sessionProjectionCache')?.coldSnapshot(header, header.isSeeded ? log.inheritedEventCount : SessionLogOffset(0), events)
+    } catch (error) {
+      ctx.logger.warn(`session import: projection cache seed for "${sessionId}" failed: ${String(error)}`)
+    }
+    ctx.emit('session-persistence/stored', header)
+    return { sessionId, exportedId: log.header.id, ...(parent === undefined ? {} : { parentSessionId: parent }) }
+  }
+
+  const imported: ImportedSession[] = []
+  imported.push(await store(logs.root, true))
+  for (const child of children) imported.push(await store(child, false))
+  await target.workspace.attachSession(rootId)
+  return { sessionId: rootId, imported, attachments: attachmentCount, truncated: rootShape?.truncated === true }
 }
 
 /**
  * Import one export ZIP into a Workspace of this Host.
  * @param ctx - Host context carrying persistence and attachments.
  * @param zip - the complete archive bytes.
- * @param target - destination Workspace, origin label, id policy.
+ * @param target - destination Workspace, origin label, mode and id policy.
  * @returns the new root id and every stored Session.
  */
 export async function importSessionZip(
@@ -156,7 +325,7 @@ export async function importSessionZip(
   if (rootName === undefined) throw new Error('session import: archive has no root session log (session.jsonl)')
   const decoder = new TextDecoder()
   const root = parseLog(decoder.decode(entries[rootName]), rootName)
-  const children: ParsedLog[] = []
+  const children: ParsedSessionLog[] = []
   for (const [path, data] of Object.entries(entries)) {
     if (SUBAGENT_LOG.test(path)) children.push(parseLog(decoder.decode(data), path))
   }
@@ -182,73 +351,5 @@ export async function importSessionZip(
     }
   }
 
-  // Ids: keep when free here, else mint; children follow their parent's mapping.
-  const idMap = new Map<SessionId, SessionId>()
-  const assign = async (exported: SessionId): Promise<SessionId> => {
-    const known = idMap.get(exported)
-    if (known !== undefined) return known
-    let chosen = exported
-    if (target.keepIds === false || (await persistence.stat(exported)) !== undefined) {
-      chosen = brandString<SessionId>(`session-${randomUUID()}`)
-    }
-    idMap.set(exported, chosen)
-    return chosen
-  }
-  const rootId = await assign(root.header.id)
-  for (const child of children) await assign(child.header.id)
-
-  const store = async (log: ParsedLog, isRoot: boolean): Promise<ImportedSession> => {
-    signal?.throwIfAborted()
-    const sessionId = idMap.get(log.header.id) as SessionId
-    const parent = log.header.parentSession === undefined ? undefined : idMap.get(log.header.parentSession) ?? log.header.parentSession
-    const header: SessionHeader = {
-      ...log.header,
-      id: sessionId,
-      cwd: target.workspace.path,
-      ...(parent === undefined ? {} : { parentSession: parent }),
-    }
-    const events = [...log.events]
-    if (isRoot && target.notify !== false) {
-      const lastSeq = events.at(-1)?.seq ?? -1
-      events.push({
-        type: 'agent/inbox/spliced',
-        seq: SessionSeq(lastSeq + 1),
-        time: Date.now(),
-        data: {
-          target: 'next-step',
-          start: 0,
-          inserted: [createUserMessage({
-            content: [{ type: 'text', text: noticeText(target.origin, target.workspace, log.header.id, sessionId) }],
-            source: { kind: 'plugin', plugin: SESSION_IMPORT_NOTICE_PLUGIN },
-          })],
-        },
-      })
-    }
-    const handle = await persistence.create(header, {
-      ...(signal === undefined ? {} : { signal }),
-      ...(header.isSeeded ? { inheritedEventCount: log.inheritedEventCount } : {}),
-    })
-    try {
-      if (events.length > 0) await handle.append(events)
-      await handle.flush()
-    } finally {
-      await handle.close()
-    }
-    // Seed this host's projection cache (title, stats, outline…) from the
-    // imported log, so the row lists with its title rather than the directory
-    // name until first open. Fail-soft: the cache is a convenience.
-    try {
-      ctx.get('sessionProjectionCache')?.coldSnapshot(header, header.isSeeded ? log.inheritedEventCount : SessionLogOffset(0), events)
-    } catch (error) {
-      ctx.logger.warn(`session import: projection cache seed for "${sessionId}" failed: ${String(error)}`)
-    }
-    ctx.emit('session-persistence/stored', header)
-    return { sessionId, exportedId: log.header.id, ...(parent === undefined ? {} : { parentSessionId: parent }) }
-  }
-
-  const imported: ImportedSession[] = []
-  imported.push(await store(root, true))
-  for (const child of children) imported.push(await store(child, false))
-  await target.workspace.attachSession(rootId)
-  return { sessionId: rootId, imported, attachments: attachmentCount }
+  return storeSessionLogs(ctx, { root, children }, target, attachmentCount)
 }

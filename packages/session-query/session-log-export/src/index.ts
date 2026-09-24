@@ -9,6 +9,14 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { importSessionZip } from './import.ts'
+
+export { copyStoredSession } from './copy.ts'
+export {
+  importSessionZip, SESSION_COPY_NOTICE_PLUGIN, SESSION_IMPORT_NOTICE_PLUGIN, sessionCopyNoticeText, storeSessionLogs,
+} from './import.ts'
+export type { ImportedSession, ParsedSessionLog, SessionImportResult, SessionImportTarget } from './import.ts'
+export { shapeCopiedLog } from './shape.ts'
+export type { CopiedLogShape } from './shape.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   flushLiveSessionLog,
@@ -119,9 +127,11 @@ function connectionOf(ctx: Context): SessionLogConnection {
 }
 
 /**
- * `POST /api/session.import?workspaceId=…|cwd=…[&keepIds=false][&origin=…]`
+ * `POST /api/session.import?workspaceId=…|cwd=…[&keepIds=false][&origin=…][&notify=false]`
  * with the export ZIP as the body: store its Sessions under the Workspace and
- * answer `{ sessionId, imported, attachments }`.
+ * answer `{ sessionId, imported, attachments, truncated }`. With `mode=copy`
+ * the originals live on elsewhere: ids are always fresh, `truncate=true` drops
+ * a turn in progress (default: closed as interrupted), `title=` names the copy.
  */
 async function sessionLogImportResponse(ctx: Context, request: Request): Promise<Response> {
   const url = new URL(request.url)
@@ -157,10 +167,14 @@ async function sessionLogImportResponse(ctx: Context, request: Request): Promise
     offset += chunk.byteLength
   }
   try {
+    const title = url.searchParams.get('title')
     const result = await importSessionZip(ctx, zip, {
       workspace,
       origin: url.searchParams.get('origin') ?? 'another DSH host',
+      mode: url.searchParams.get('mode') === 'copy' ? 'copy' : 'move',
       keepIds: url.searchParams.get('keepIds') !== 'false',
+      truncate: url.searchParams.get('truncate') === 'true',
+      ...(title === null ? {} : { title }),
       notify: url.searchParams.get('notify') !== 'false',
       signal: request.signal,
     })

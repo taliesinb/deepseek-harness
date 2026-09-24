@@ -7,6 +7,7 @@
   },
   "files": [
     "src/index.ts",
+    "src/copy.ts",
     "src/move.ts",
     "src/types.ts",
     "src/remote-events.ts",
@@ -45,6 +46,7 @@
     { "path": "../../session/session-projection-cache" },
     { "path": "../../session/session-title" },
     { "path": "../../session-query/session-query" },
+    { "path": "../../session-query/session-log-export/tsconfig.host.json" },
     { "path": "../../skill/skill" },
     { "path": "../../subagent/subagent" },
     { "path": "../../util/time" },

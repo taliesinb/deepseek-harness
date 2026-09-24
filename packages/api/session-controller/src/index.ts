@@ -16,6 +16,7 @@ import {
   type ApiSessionAgentResult,
 } from './agent.ts'
 import { SessionCommandController } from './commands.ts'
+import { SessionCopyController } from './copy.ts'
 import { SessionMoveController } from './move.ts'
 import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
@@ -33,6 +34,8 @@ import type {
   SessionCancelValue,
   SessionControlFrame,
   SessionCreateRequest,
+  SessionCopyRequest,
+  SessionCopyValue,
   SessionCreateValue,
   SessionFollowFrame,
   SessionFollowRequest,
@@ -111,6 +114,7 @@ export class SessionController extends TypertRemoteService {
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
   private readonly moves: SessionMoveController
+  private readonly copies: SessionCopyController
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
   private readonly listState: ApiSessionList
@@ -143,6 +147,7 @@ export class SessionController extends TypertRemoteService {
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
     this.listState = new ApiSessionList(ctx)
     this.moves = new SessionMoveController(ctx, this.agents)
+    this.copies = new SessionCopyController(ctx)
     this.openPath = internals.openPath ?? openNativePath
     this.revealPath = internals.revealPath ?? revealNativePath
     this.canOpenPath = internals.canOpenPath
@@ -372,6 +377,20 @@ export class SessionController extends TypertRemoteService {
   @Remote('moveMany')
   moveMany(request: SessionMoveManyRequest): Promise<SessionMoveManyValue> {
     return this.moves.moveMany(request)
+  }
+
+  /**
+   * Copy one Session (with its subagent descendants) into a Workspace as a
+   * new Session: the source's durable log is read and stored again under the
+   * destination cwd with fresh ids; the source, running or not, is untouched.
+   * A source mid-turn is refused until the caller decides whether to drop the
+   * turn in progress (`truncate`) or keep it closed as interrupted.
+   * @param request - source, destination Workspace or directory, mid-turn policy, optional title.
+   * @returns the new root id, every stored id, and whether a turn was dropped.
+   */
+  @Remote('copy')
+  copy(request: SessionCopyRequest): Promise<SessionCopyValue> {
+    return this.copies.copy(request)
   }
 
   /**

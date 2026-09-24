@@ -70,6 +70,57 @@ export function describeBlockers(blockers: readonly SessionMoveBlocker[]): strin
   }).join('; ')
 }
 
+/**
+ * Resolve a move/copy destination: an existing Workspace by id, or a directory
+ * registered as one on the way.
+ * @param ctx - Host context carrying the Workspace registry.
+ * @param destination - the requested destination.
+ * @returns the Workspace.
+ */
+export async function resolveMoveDestination(ctx: Context, destination: SessionMoveDestination): Promise<Workspace> {
+  if ('workspaceId' in destination) {
+    const workspace = ctx.workspaceRegistry.get(destination.workspaceId)
+    if (workspace === undefined) {
+      throw new RemoteError('workspace/not-found', `workspace "${destination.workspaceId}" not found`, {
+        workspaceId: destination.workspaceId,
+      })
+    }
+    return workspace
+  }
+  try {
+    return await ctx.workspaceRegistry.create(destination.path, destination.title)
+  } catch (error) {
+    throw new RemoteError('workspace/create-failed', `cannot use "${destination.path}" as a workspace: ${String(error)}`, {
+      path: destination.path,
+    })
+  }
+}
+
+/**
+ * What retiring a resident Agent would interrupt: an in-flight turn, its
+ * running background jobs, subagents it owns. Empty means the Agent is merely
+ * loaded and can be retired without anyone noticing.
+ * @param ctx - Host context carrying the Agent registry and optional jobs service.
+ * @param agent - the resident Agent.
+ * @returns the blockers, in the order the UI lists them.
+ */
+export function sessionMoveBlockers(ctx: Context, agent: Agent): SessionMoveBlocker[] {
+  const blockers: SessionMoveBlocker[] = []
+  if (agent.status === 'running') blockers.push({ kind: 'turn' })
+  const jobs = ctx.get('jobs')
+  if (jobs !== undefined) {
+    const labels = jobs.list(agent)
+      .filter(job => job.status === 'running' || job.status === 'stopping')
+      .map(job => job.label)
+    if (labels.length > 0) blockers.push({ kind: 'jobs', labels })
+  }
+  const children = ctx.agents.list().filter(candidate => candidate !== agent && ctx.agents.isOwnedBy(candidate.id, agent))
+  if (children.length > 0) {
+    blockers.push({ kind: 'subagents', count: children.length, running: children.filter(child => child.status === 'running').length })
+  }
+  return blockers
+}
+
 /** Host-side move orchestration behind `session.move` / `session.moveMany`. */
 export class SessionMoveController {
   /**
@@ -87,7 +138,7 @@ export class SessionMoveController {
    * @returns the moved ids and the destination Workspace.
    */
   async move(request: SessionMoveRequest): Promise<SessionMoveValue> {
-    const destination = await this.resolveDestination(request.destination)
+    const destination = await resolveMoveDestination(this.ctx, request.destination)
     const outcome = await this.moveOne(request.sessionId, destination, request)
     if (outcome.skipped !== undefined) {
       if (outcome.skipped.reason === 'live') {
@@ -105,7 +156,7 @@ export class SessionMoveController {
    * @returns moved ids and skipped Sessions with reasons.
    */
   async moveMany(request: SessionMoveManyRequest): Promise<SessionMoveManyValue> {
-    const destination = await this.resolveDestination(request.destination)
+    const destination = await resolveMoveDestination(this.ctx, request.destination)
     const moved: SessionId[] = []
     const skipped: SessionMoveSkip[] = []
     const done = new Set<SessionId>()
@@ -117,25 +168,6 @@ export class SessionMoveController {
       if (outcome.skipped !== undefined) skipped.push(outcome.skipped)
     }
     return { workspaceId: destination.id, moved, skipped }
-  }
-
-  private async resolveDestination(destination: SessionMoveDestination): Promise<Workspace> {
-    if ('workspaceId' in destination) {
-      const workspace = this.ctx.workspaceRegistry.get(destination.workspaceId)
-      if (workspace === undefined) {
-        throw new RemoteError('workspace/not-found', `workspace "${destination.workspaceId}" not found`, {
-          workspaceId: destination.workspaceId,
-        })
-      }
-      return workspace
-    }
-    try {
-      return await this.ctx.workspaceRegistry.create(destination.path, destination.title)
-    } catch (error) {
-      throw new RemoteError('workspace/create-failed', `cannot use "${destination.path}" as a workspace: ${String(error)}`, {
-        path: destination.path,
-      })
-    }
   }
 
   private async moveOne(
@@ -204,7 +236,7 @@ export class SessionMoveController {
     // caller to decide (`stopLive`), because retiring it aborts that turn.
     const resident = this.ctx.agents.get(sessionId)
     if (resident !== undefined || this.ctx.sessions.get(sessionId) !== undefined) {
-      const blockers = resident === undefined ? [] : this.blockersOf(resident)
+      const blockers = resident === undefined ? [] : sessionMoveBlockers(this.ctx, resident)
       if (blockers.length > 0 && policy.stopLive !== true) {
         return { skipped: { sessionId, reason: 'live', message: `session "${sessionId}": ${describeBlockers(blockers)}; stop it first or move with stopLive`, blockers } }
       }
@@ -279,28 +311,6 @@ export class SessionMoveController {
     return snapshots
       .map(snapshot => snapshot.header)
       .filter(header => header.origin === 'subagent' && header.parentSession === parent && header.cwd === cwd)
-  }
-
-  /**
-   * What retiring this resident Agent would interrupt: an in-flight turn, its
-   * running background jobs, subagents it owns. Empty means the Agent is
-   * merely loaded and can be retired without anyone noticing.
-   */
-  private blockersOf(agent: Agent): SessionMoveBlocker[] {
-    const blockers: SessionMoveBlocker[] = []
-    if (agent.status === 'running') blockers.push({ kind: 'turn' })
-    const jobs = this.ctx.get('jobs')
-    if (jobs !== undefined) {
-      const labels = jobs.list(agent)
-        .filter(job => job.status === 'running' || job.status === 'stopping')
-        .map(job => job.label)
-      if (labels.length > 0) blockers.push({ kind: 'jobs', labels })
-    }
-    const children = this.ctx.agents.list().filter(candidate => candidate !== agent && this.ctx.agents.isOwnedBy(candidate.id, agent))
-    if (children.length > 0) {
-      blockers.push({ kind: 'subagents', count: children.length, running: children.filter(child => child.status === 'running').length })
-    }
-    return blockers
   }
 
   /**

@@ -1,14 +1,18 @@
 /**
- * Browser-owned dialogs behind the "Move to…" (session) and "Rehome…"
- * (workspace) row actions. Both share one destination picker — the same
- * WorkspacePickFlow popover the sidebar's "Add workspace" uses, so an existing
- * Workspace or a freshly registered directory can be the target — and hand the
- * decision to the Host's `session.move` / `session.moveMany`.
+ * Browser-owned dialogs behind the "Move to…" / "Copy to…" (session) and
+ * "Rehome…" (workspace) row actions. All share one destination picker — the
+ * same WorkspacePickFlow popover the sidebar's "Add workspace" uses, so an
+ * existing Workspace or a freshly registered directory can be the target — and
+ * hand the decision to the Host's `session.move` / `session.moveMany` /
+ * `session.copy`.
  *
  * A live Session refuses to move (`session/move-live`); the dialog answers by
  * revealing the stop-and-move option rather than failing, so the operator
- * chooses explicitly. Rehome moves every member of the source Workspace,
- * reports skips, and can delete the emptied source.
+ * chooses explicitly. A copy never disturbs the source, so a running one is
+ * refused only until the operator decides what the copy does with the turn in
+ * progress (`session/copy-live` → the truncate option). Rehome moves every
+ * member of the source Workspace, reports skips, and can delete the emptied
+ * source.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -24,6 +28,7 @@ import css from './WorkspaceBrowser.module.css'
 export interface MoveApi {
   moveSession: WorkspaceBrowserProps['moveSession']
   moveSessions: WorkspaceBrowserProps['moveSessions']
+  copySession: WorkspaceBrowserProps['copySession']
   deleteWorkspace: WorkspaceBrowserProps['deleteWorkspace']
 }
 
@@ -219,6 +224,115 @@ export function MoveSessionDialog({ target, workspaces, api, flow, t, onClose, o
           </>
         )}
         <Checkbox checked={notify} onChange={setNotify} disabled={pending} label={t('move.notify')} />
+        {error !== null && <div className={css.renameError} role="alert">{error}</div>}
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * "Copy to…" for one session: a new session (fresh id) in the chosen
+ * workspace — the source's own included — with an editable title defaulting to
+ * “<title> (copy)”. A running source is refused once (`session/copy-live`);
+ * the dialog then shows what is in flight and the truncate option, ticked by
+ * default, and the operator confirms again.
+ */
+export function CopySessionDialog({ target, workspaces, api, flow, t, onClose, onCopied }: {
+  /** The session being copied; null closes the dialog. */
+  target: { sessionId: SessionId; title: string; workspaceId: WorkspaceId | undefined; destinationId?: WorkspaceId | undefined } | null
+  workspaces: readonly WorkspaceView[]
+  api: Pick<MoveApi, 'copySession'>
+  flow: DestinationFlowProps
+  t: Translate
+  onClose: () => void
+  onCopied: (result: { sessionId: SessionId; workspaceId: WorkspaceId }) => void
+}) {
+  const [destinationId, setDestinationId] = useState<WorkspaceId | undefined>(undefined)
+  const [title, setTitle] = useState('')
+  const [truncate, setTruncate] = useState(true)
+  const [blockers, setBlockers] = useState<readonly MoveBlocker[] | null>(null)
+  const liveRefused = blockers !== null
+  const [notify, setNotify] = useState(true)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    setDestinationId(target?.destinationId ?? target?.workspaceId)
+    setTitle(target === null ? '' : `${target.title}${t('copy.title.suffix')}`)
+    setTruncate(true)
+    setBlockers(null)
+    setNotify(true)
+    setPending(false)
+    setError(null)
+  }, [t, target])
+  const destination = destinationOf(workspaces, destinationId)
+  const blocked = pending || destination === undefined
+
+  const confirm = useCallback(async () => {
+    if (target === null || destination === undefined || blocked) return
+    setPending(true)
+    setError(null)
+    const trimmed = title.trim()
+    const result = await api.copySession({
+      sessionId: target.sessionId,
+      destination: { workspaceId: destination.workspaceId },
+      // Undecided until the Host says a turn is running; then the checkbox decides.
+      ...(liveRefused ? { truncate } : {}),
+      ...(trimmed === '' || trimmed === target.title ? {} : { title: trimmed }),
+      notify,
+    })
+    setPending(false)
+    if (result.ok) {
+      onCopied({ sessionId: result.value.sessionId, workspaceId: result.value.workspaceId })
+      return
+    }
+    if (result.error.code === 'session/copy-live') {
+      setBlockers(blockersOf(result.error.details))
+      return
+    }
+    setError(failureMessage(result))
+  }, [api, blocked, destination, liveRefused, notify, onCopied, target, title, truncate])
+
+  return (
+    <Modal
+      open={target !== null}
+      onClose={onClose}
+      closeLabel={t('close')}
+      title={t('copy.session.title')}
+      width={520}
+      footer={(
+        <>
+          <Button variant="outline" disabled={pending} onClick={onClose}>{t('cancel')}</Button>
+          <Button variant="primary" disabled={blocked} onClick={() => { void confirm() }}>{pending ? t('copy.pending') : t('copy.confirm')}</Button>
+        </>
+      )}
+    >
+      <div className={css.moveBody}>
+        {target !== null && <div className={css.moveDesc}>{t('copy.desc', { name: target.title })}</div>}
+        <DestinationPicker
+          t={t} value={destination} exclude={undefined} flow={flow} onPick={setDestinationId} disabled={pending}
+        />
+        <label className={css.moveField}>
+          <span className={css.moveLabel}>{t('copy.title')}</span>
+          <input
+            className={css.renameInput}
+            value={title}
+            disabled={pending}
+            onChange={(event) => { setTitle(event.currentTarget.value) }}
+            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void confirm() } }}
+          />
+        </label>
+        {liveRefused && (
+          <>
+            <div className={css.moveHint}>
+              {t('copy.live.blockers')}
+              <ul className={css.moveBlockers}>
+                {blockers.map((blocker, index) => <li key={index}>{blockerLabel(blocker, t)}</li>)}
+              </ul>
+            </div>
+            <Checkbox checked={truncate} onChange={setTruncate} disabled={pending} label={t('copy.truncate')} description={t('copy.truncate.desc')} />
+          </>
+        )}
+        <Checkbox checked={notify} onChange={setNotify} disabled={pending} label={t('copy.notify')} />
         {error !== null && <div className={css.renameError} role="alert">{error}</div>}
       </div>
     </Modal>

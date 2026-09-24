@@ -163,6 +163,27 @@ export interface ISessions {
     skipped: readonly { sessionId: SessionId; reason: 'live' | 'missing' | 'same-workspace' | 'error'; message: string }[]
   }>>
   /**
+   * Copy one session (with its subagent descendants) into a Workspace as a
+   * new session with a fresh id; the source is untouched. The result is
+   * returned, not thrown: `session/copy-live` is an expected outcome the UI
+   * answers by asking whether to drop the turn in progress (`truncate`).
+   * @param opts - source, destination, mid-turn policy, optional title for the copy.
+   * @returns the Host result: the new session, destination Workspace and stored ids, or the refusal.
+   */
+  copy(opts: {
+    sessionId: SessionId
+    destination: { workspaceId: WorkspaceId } | { path: string; title?: string }
+    truncate?: boolean
+    title?: string
+    notify?: boolean
+  }): Promise<RemoteResult<{
+    sessionId: SessionId
+    sourceSessionId: SessionId
+    workspaceId: WorkspaceId
+    copied: readonly SessionId[]
+    truncated: boolean
+  }>>
+  /**
    * Borrow an already-retained Agent-scoped Context without extending its lifetime.
    * @param id - session id.
    * @returns the live scoped Context, or undefined without a retained generation.

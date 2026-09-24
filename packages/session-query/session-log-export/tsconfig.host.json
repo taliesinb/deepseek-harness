@@ -7,8 +7,10 @@
   },
   "files": [
     "src/archive.ts",
+    "src/copy.ts",
+    "src/import.ts",
     "src/index.ts",
-    "src/import.ts"
+    "src/shape.ts"
   ],
   "references": [
     {

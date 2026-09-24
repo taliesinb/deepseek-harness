@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
+  HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16, IconCopyOutline16,
   IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconFolderOpenOutline16,
   IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, relativeTime,
   StateDot,
@@ -135,7 +135,9 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
-export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, extraItems, onExtra, drag, home, t }: {
+export function ProjectRowItem({
+  group, containsCurrentDescendant = false, onToggle, onCreate, actions, extraItems, onExtra, drag, home, t,
+}: {
   group: GroupNode
   containsCurrentDescendant?: boolean
   onToggle: () => void
@@ -409,7 +411,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onMove, extraItems, onExtra, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onMove, onCopy, extraItems, onExtra, onReveal, drag, flat = false, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -423,6 +425,8 @@ export function SessionNodeItem({
   onArchive: (id: SessionNode['id']) => void
   /** Open the browser-owned move dialog for this session (row menu action). */
   onMove?: ((id: SessionNode['id'], currentTitle: string) => void) | undefined
+  /** Open the browser-owned copy dialog for this session (row menu action). */
+  onCopy?: ((id: SessionNode['id'], currentTitle: string) => void) | undefined
   /** Contributed menu items appended after the built-ins (ids prefixed by the owner). */
   extraItems?: readonly MenuEntry[] | undefined
   /** Run one contributed item by id. */
@@ -457,6 +461,7 @@ export function SessionNodeItem({
     { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
     ...(onMove === undefined || row.blank ? [] : [{ id: 'move', label: t('menu.moveSession'), icon: <IconFolderOpenOutline16 /> }]),
+    ...(onCopy === undefined || row.blank ? [] : [{ id: 'copy', label: t('menu.copySession'), icon: <IconCopyOutline16 /> }]),
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
     ...(extraItems === undefined || extraItems.length === 0 ? [] : [{ type: 'separator' as const, id: 'sep-contrib' }, ...extraItems]),
@@ -529,6 +534,7 @@ export function SessionNodeItem({
               if (id === 'rename') onRename(node.id, row.title)
               else if (id === 'fork') onFork(node.id)
               else if (id === 'move') onMove?.(node.id, row.title)
+              else if (id === 'copy') onCopy?.(node.id, row.title)
               else if (id === 'archive') onArchive(node.id)
               else onExtra?.(id)
             }}

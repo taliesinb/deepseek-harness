@@ -126,6 +126,13 @@ export type WorkspaceBrowserInjected = {
   /** Move several Sessions to one Workspace; per-Session skips arrive in the value. */
   moveSessions: ISessions['moveMany']
   /**
+   * Copy one Session (and its subagent descendants) into a Workspace as a new
+   * Session; the source is untouched. Returns the Host result instead of
+   * throwing: `session/copy-live` is an expected outcome the copy dialog
+   * answers with the truncate option.
+   */
+  copySession: ISessions['copy']
+  /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
    * open it; without an explicit workspace, inherit the current Session
    * Workspace, then the recent Workspace, or clear into the New Session view.

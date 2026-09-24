@@ -506,6 +506,12 @@ export class ClientSessions implements ISessions {
     return result
   }
 
+  async copy(opts: Parameters<ISessions['copy']>[0]): ReturnType<ISessions['copy']> {
+    const result = await this.remotes.session.copy(opts)
+    if (result.ok) this.projectList()
+    return result
+  }
+
   /**
    * Borrow an already-retained Agent-scoped Context.
    * @param id - session id (the agent identity — 1:1 same axis).

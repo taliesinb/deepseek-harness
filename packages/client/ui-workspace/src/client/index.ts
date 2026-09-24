@@ -138,6 +138,7 @@ export function apply(ctx: Context): void {
     createWorkspace: input => workspaces.create(input),
     moveSession: opts => sessions.move(opts),
     moveSessions: opts => sessions.moveMany(opts),
+    copySession: opts => sessions.copy(opts),
     hooks: { directoryFlow: browserFlowSource, hostInfo, menuContributions: uiWorkspace.menuContributions },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({

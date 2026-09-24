@@ -205,6 +205,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/move-error': { readonly sessionId: SessionId }
     /** The mounted session storage cannot relocate sessions. */
     'session/move-unsupported': Record<never, never>
+    /** Copy refused: the source's Agent is mid-turn and `truncate` was not decided (details carry the blockers). */
+    'session/copy-live': { readonly sessionId: SessionId; readonly blockers: readonly SessionMoveBlocker[] }
+    /** Copy refused: no such stored Session. */
+    'session/copy-missing': { readonly sessionId: SessionId }
+    /** Copy failed after validation; message carries the storage error. */
+    'session/copy-error': { readonly sessionId: SessionId }
     /** The destination directory could not be registered as a Workspace. */
     'workspace/create-failed': { readonly path: string }
     'agent-preset/conflict': {
@@ -373,6 +379,41 @@ export interface SessionMoveManyValue {
   readonly workspaceId: WorkspaceId
   readonly moved: readonly SessionId[]
   readonly skipped: readonly SessionMoveSkip[]
+}
+
+/**
+ * Copy one Session (with its subagent descendants) into a Workspace — the
+ * same one included — as a new Session with a fresh id. The source is only
+ * read: a running Agent keeps running.
+ */
+export interface SessionCopyRequest {
+  readonly sessionId: SessionId
+  readonly destination: SessionMoveDestination
+  /**
+   * What to do with a turn in progress at the source. `true`: drop it whole
+   * (the copy ends after the last completed turn; the prompt that started the
+   * turn is cancelled). `false`: copy what has been recorded and close the
+   * turn as interrupted. Omitted: refused with `session/copy-live` when the
+   * Agent is actually running (details carry the blockers) so the caller
+   * decides; a cold source with a crashed open turn is closed as interrupted.
+   */
+  readonly truncate?: boolean
+  /** Title recorded on the copy; omitted keeps the source's title. */
+  readonly title?: string
+  /** Append the copy notice the Agent reads on its next step; default true. */
+  readonly notify?: boolean
+}
+
+/** Result of one copy. */
+export interface SessionCopyValue {
+  /** The new root Session. */
+  readonly sessionId: SessionId
+  readonly sourceSessionId: SessionId
+  readonly workspaceId: WorkspaceId
+  /** Every Session stored, root first, descendants after. */
+  readonly copied: readonly SessionId[]
+  /** Whether a turn in progress was dropped. */
+  readonly truncated: boolean
 }
 
 /** Session fork request. */

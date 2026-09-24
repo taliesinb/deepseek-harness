@@ -110,6 +110,14 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     createWorkspace: vi.fn(async () => workspace('created', [])),
     moveSession: vi.fn(async opts => ({ ok: true as const, value: { sessionId: opts.sessionId, workspaceId: wid('created'), moved: [opts.sessionId] } })),
     moveSessions: vi.fn(async opts => ({ ok: true as const, value: { workspaceId: wid('created'), moved: [...opts.sessionIds], skipped: [] } })),
+    copySession: vi.fn<WorkspaceBrowserProps['copySession']>(async opts => ({
+      ok: true as const,
+      value: {
+        sessionId: sid('the-copy'), sourceSessionId: opts.sessionId,
+        workspaceId: 'workspaceId' in opts.destination ? opts.destination.workspaceId : wid('created'),
+        copied: [sid('the-copy')], truncated: false,
+      },
+    })),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     useMenuContributions: selector => selector({ session: [], workspace: [] }),
@@ -715,6 +723,50 @@ describe('WorkspaceBrowser', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('copies a session from the row menu: own workspace preselected, title suffixed, opens the copy; a live refusal reveals truncate', async () => {
+    const open = vi.fn()
+    const b = mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s']), workspace('beta', [])])),
+      open,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制到…' }))
+    const dialog = screen.getByRole('dialog', { name: '复制会话' })
+    // Destination defaults to the session's own workspace; the title gets the copy suffix.
+    expect(within(dialog).getByText('alpha', { selector: 'span' })).toBeTruthy()
+    const title = within(dialog).getByDisplayValue('alpha-s（副本）')
+    expect(title).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: '复制' }))
+    await act(async () => { await Promise.resolve() })
+    expect(b.props.copySession).toHaveBeenCalledWith({
+      sessionId: sid('alpha-s'), destination: { workspaceId: wid('alpha') }, title: 'alpha-s（副本）', notify: true,
+    })
+    expect(open).toHaveBeenCalledWith(sid('the-copy'))
+    expect(screen.queryByRole('dialog', { name: '复制会话' })).toBeNull()
+
+    // A running source: first answer is the refusal, the dialog reveals the truncate option, confirm again decides it.
+    const copySession = vi.fn()
+      .mockResolvedValueOnce({ ok: false as const, error: { code: 'session/copy-live', message: 'running', details: { sessionId: sid('alpha-s'), blockers: [{ kind: 'turn' }] } } })
+      .mockResolvedValueOnce({ ok: true as const, value: { sessionId: sid('the-copy-2'), sourceSessionId: sid('alpha-s'), workspaceId: wid('alpha'), copied: [sid('the-copy-2')], truncated: true } })
+    rerender(b, { copySession: copySession as never })
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制到…' }))
+    const second = screen.getByRole('dialog', { name: '复制会话' })
+    expect(within(second).queryByLabelText('只复制到最后一个已完成的回合')).toBeNull()
+    fireEvent.click(within(second).getByRole('button', { name: '复制' }))
+    await act(async () => { await Promise.resolve() })
+    expect(copySession.mock.calls[0]![0]).not.toHaveProperty('truncate')
+    expect(within(second).getByText('一个回合正在执行（模型请求或工具调用）')).toBeTruthy()
+    const truncate = within(second).getByLabelText(/只复制到最后一个已完成的回合/u) as HTMLInputElement
+    expect(truncate.checked).toBe(true)
+    fireEvent.click(within(second).getByRole('button', { name: '复制' }))
+    await act(async () => { await Promise.resolve() })
+    expect(copySession.mock.calls[1]![0]).toMatchObject({ truncate: true })
+    expect(open).toHaveBeenLastCalledWith(sid('the-copy-2'))
   })
 
   it('renders a fork child as a top-level row without a session twist', () => {

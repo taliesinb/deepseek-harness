@@ -863,6 +863,17 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('moveMany') moveMany(request: SessionMoveManyRequest): Promise<SessionMoveManyValue>
 
 /**
+ * Copy one Session (with its subagent descendants) into a Workspace as a
+ * new Session: the source's durable log is read and stored again under the
+ * destination cwd with fresh ids; the source, running or not, is untouched.
+ * A source mid-turn is refused until the caller decides whether to drop the
+ * turn in progress (`truncate`) or keep it closed as interrupted.
+ * @param request - source, destination Workspace or directory, mid-turn policy, optional title.
+ * @returns the new root id, every stored id, and whether a turn was dropped.
+ */
+@Remote('copy') copy(request: SessionCopyRequest): Promise<SessionCopyValue>
+
+/**
  * Admit one prompt after explicitly resuming its Session.
  * @param request - Session identity, prompt content, source metadata, and delivery mode.
  * @param signal - caller cancellation before prompt admission begins.

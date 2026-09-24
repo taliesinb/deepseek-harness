@@ -28,7 +28,7 @@ import {
   pinCurrentBlank, reconcileManualOrder, UNGROUPED_KEY, visibleSessionIds,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
-import { MoveSessionDialog, RehomeWorkspaceDialog } from './MoveDialogs.tsx'
+import { CopySessionDialog, MoveSessionDialog, RehomeWorkspaceDialog } from './MoveDialogs.tsx'
 import type { MenuContribution, MenuContributions } from '../navigation.ts'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
@@ -224,6 +224,8 @@ type SessionTreeProps = Pick<
   onRehomeRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the browser-owned session move dialog (optionally with a preselected destination). */
   onSessionMove: (sessionId: SessionNode['id'], currentTitle: string, destinationId?: WorkspaceId) => void
+  /** Open the browser-owned session copy dialog. */
+  onSessionCopy: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** A session row was dropped on another Workspace group. */
   onSessionDrop: (sessionId: SessionNode['id'], currentTitle: string, destinationId: WorkspaceId) => void
   /** Row-menu items contributed by other plugins. */
@@ -243,7 +245,7 @@ function SessionTree({
   list, useSessionStatus, startSession, open, forkSession, workspaces, ungroupedSessionIds,
   archivedSessionIds,
   workspaceReady, usePanelInfo,
-  onRenameRequest, onDeleteRequest, onRehomeRequest, onSessionMove, onSessionDrop, menuContributions,
+  onRenameRequest, onDeleteRequest, onRehomeRequest, onSessionMove, onSessionCopy, onSessionDrop, menuContributions,
   onSessionRename, onSessionArchive,
   insertWorkspaceBefore,
   nestWorkspaces, groupExpansion, setGroupExpanded,
@@ -478,19 +480,19 @@ function SessionTree({
             setDrag(d => (d === null || d.over?.id === group.key ? d : { ...d, over: { id: group.key as SessionNode['id'], half: 'after' } }))
           }
           : workspaceDrag === null
-          ? undefined
-          : (e) => {
-            e.preventDefault()
-            if (hoverWorkspace === undefined && parents.get(group.key) !== undefined) return
-            e.stopPropagation()
-            if (hoverWorkspace === undefined) {
-              e.dataTransfer.dropEffect = 'none'
-              if (workspaceDrag.over !== null) setWorkspaceDrag({ ...workspaceDrag, over: null })
-            } else {
-              e.dataTransfer.dropEffect = 'move'
-              hoverWorkspace(workspaceGroupHalf(e))
-            }
-          }}
+            ? undefined
+            : (e) => {
+              e.preventDefault()
+              if (hoverWorkspace === undefined && parents.get(group.key) !== undefined) return
+              e.stopPropagation()
+              if (hoverWorkspace === undefined) {
+                e.dataTransfer.dropEffect = 'none'
+                if (workspaceDrag.over !== null) setWorkspaceDrag({ ...workspaceDrag, over: null })
+              } else {
+                e.dataTransfer.dropEffect = 'move'
+                hoverWorkspace(workspaceGroupHalf(e))
+              }
+            }}
         onDrop={foreignSessionDrag
           ? (e) => {
             e.preventDefault()
@@ -502,18 +504,18 @@ function SessionTree({
             onSessionDrop(drag.sessionId, title, workspaceId)
           }
           : workspaceDrag === null
-          ? undefined
-          : (e) => {
-            e.preventDefault()
-            if (dropWorkspace === undefined && parents.get(group.key) !== undefined) return
-            e.stopPropagation()
-            if (dropWorkspace === undefined) {
-              workspaceDropCommitted.current = true
-              setWorkspaceDrag(null)
-            } else {
-              dropWorkspace(workspaceGroupHalf(e))
-            }
-          }}
+            ? undefined
+            : (e) => {
+              e.preventDefault()
+              if (dropWorkspace === undefined && parents.get(group.key) !== undefined) return
+              e.stopPropagation()
+              if (dropWorkspace === undefined) {
+                workspaceDropCommitted.current = true
+                setWorkspaceDrag(null)
+              } else {
+                dropWorkspace(workspaceGroupHalf(e))
+              }
+            }}
       >
         <ProjectRowItem
           group={group}
@@ -603,6 +605,7 @@ function SessionTree({
               onFork={forkSession}
               onArchive={onSessionArchive}
               onMove={(id, title) => { onSessionMove(id, title) }}
+              onCopy={onSessionCopy}
               extraItems={sessionMenuItems(node.id, node.title)}
               onExtra={(id) => { runSessionExtra(id, node.id, node.title) }}
               onReveal={node.id === revealSessionId && group.key === revealGroup
@@ -864,6 +867,7 @@ export function WorkspaceBrowser({
   createWorkspace,
   moveSession,
   moveSessions,
+  copySession,
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
@@ -1178,12 +1182,22 @@ export function WorkspaceBrowser({
     title: string
     sessionIds: readonly SessionId[]
   } | null>(null)
+  // Copy dialog: always confirmed (the destination defaults to the session's
+  // own workspace, so "Copy to…" doubles as "Duplicate").
+  const [copyTarget, setCopyTarget] = useState<{
+    sessionId: SessionId
+    title: string
+    workspaceId: WorkspaceId | undefined
+  } | null>(null)
   const owningWorkspaceOf = (sessionId: SessionId): WorkspaceId | undefined =>
     workspaces.find(candidate => candidate.sessionIds.includes(sessionId))?.workspaceId
   const openMoveDialog = (sessionId: SessionId, title: string, destinationId?: WorkspaceId): void => {
     setMoveTarget({
       sessionId, title, workspaceId: owningWorkspaceOf(sessionId), ...(destinationId === undefined ? {} : { destinationId }),
     })
+  }
+  const openCopyDialog = (sessionId: SessionId, title: string): void => {
+    setCopyTarget({ sessionId, title, workspaceId: owningWorkspaceOf(sessionId) })
   }
   const dropSession = (sessionId: SessionId, title: string, destinationId: WorkspaceId): void => {
     if (owningWorkspaceOf(sessionId) === destinationId) return
@@ -1437,6 +1451,7 @@ export function WorkspaceBrowser({
                   setRehomeTarget({ workspaceId, title, sessionIds: view?.sessionIds ?? [] })
                 }}
                 onSessionMove={openMoveDialog}
+                onSessionCopy={openCopyDialog}
                 onSessionDrop={dropSession}
                 menuContributions={menuContributions}
               />
@@ -1448,16 +1463,30 @@ export function WorkspaceBrowser({
       <MoveSessionDialog
         target={moveTarget}
         workspaces={workspaces}
-        api={{ moveSession, moveSessions, deleteWorkspace }}
+        api={{ moveSession, moveSessions, copySession, deleteWorkspace }}
         flow={destinationFlow}
         t={t}
         onClose={() => { setMoveTarget(null) }}
         onMoved={(workspaceId) => { setMoveTarget(null); actions.setGroupExpanded(workspaceId, true) }}
       />
+      <CopySessionDialog
+        target={copyTarget}
+        workspaces={workspaces}
+        api={{ copySession }}
+        flow={destinationFlow}
+        t={t}
+        onClose={() => { setCopyTarget(null) }}
+        onCopied={({ sessionId, workspaceId }) => {
+          setCopyTarget(null)
+          actions.setGroupExpanded(workspaceId, true)
+          // Land on the copy: it is where the operator's attention goes next.
+          open(sessionId)
+        }}
+      />
       <RehomeWorkspaceDialog
         target={rehomeTarget}
         workspaces={workspaces}
-        api={{ moveSession, moveSessions, deleteWorkspace }}
+        api={{ moveSession, moveSessions, copySession, deleteWorkspace }}
         flow={destinationFlow}
         t={t}
         onClose={() => { setRehomeTarget(null) }}
