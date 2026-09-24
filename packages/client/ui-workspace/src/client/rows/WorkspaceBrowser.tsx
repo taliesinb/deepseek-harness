@@ -29,7 +29,7 @@ import {
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { CopySessionDialog, MoveSessionDialog, RehomeWorkspaceDialog } from './MoveDialogs.tsx'
-import type { MenuContribution, MenuContributions } from '../navigation.ts'
+import type { DestinationContribution, MenuContribution, MenuContributions } from '../navigation.ts'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -873,11 +873,13 @@ export function WorkspaceBrowser({
   useDirectoryFlow,
   useHostInfo,
   useMenuContributions,
+  useDestinationContributions,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
   const home = useHostInfo(info => info.home)
   const menuContributions = useMenuContributions(contributions => contributions)
+  const destinationContributions: readonly DestinationContribution[] = useDestinationContributions(contributions => contributions)
   // Ordering remains live while the rail or search replaces the list body.
   const list = useSessions(state => state)
   const workspaces = useWorkspaces(state => state.items)
@@ -1465,22 +1467,27 @@ export function WorkspaceBrowser({
         workspaces={workspaces}
         api={{ moveSession, moveSessions, copySession, deleteWorkspace }}
         flow={destinationFlow}
+        contributions={destinationContributions}
         t={t}
         onClose={() => { setMoveTarget(null) }}
-        onMoved={(workspaceId) => { setMoveTarget(null); actions.setGroupExpanded(workspaceId, true) }}
+        onMoved={(workspaceId) => {
+          setMoveTarget(null)
+          if (workspaceId !== undefined) actions.setGroupExpanded(workspaceId, true)
+        }}
       />
       <CopySessionDialog
         target={copyTarget}
         workspaces={workspaces}
         api={{ copySession }}
         flow={destinationFlow}
+        contributions={destinationContributions}
         t={t}
         onClose={() => { setCopyTarget(null) }}
         onCopied={({ sessionId, workspaceId }) => {
           setCopyTarget(null)
-          actions.setGroupExpanded(workspaceId, true)
+          if (workspaceId !== undefined) actions.setGroupExpanded(workspaceId, true)
           // Land on the copy: it is where the operator's attention goes next.
-          open(sessionId)
+          if (sessionId !== undefined) open(sessionId)
         }}
       />
       <RehomeWorkspaceDialog

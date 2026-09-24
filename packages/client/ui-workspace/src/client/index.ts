@@ -31,6 +31,7 @@ import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
 export type {
+  DestinationContribution, DestinationEntry, DestinationGroup, DestinationRunRequest, DestinationRunResult,
   MenuContribution, MenuContributions, SessionMenuContribution, SessionMenuTarget, UiWorkspace,
   WorkspaceMenuContribution, WorkspaceMenuTarget,
 } from './navigation.ts'
@@ -139,7 +140,10 @@ export function apply(ctx: Context): void {
     moveSession: opts => sessions.move(opts),
     moveSessions: opts => sessions.moveMany(opts),
     copySession: opts => sessions.copy(opts),
-    hooks: { directoryFlow: browserFlowSource, hostInfo, menuContributions: uiWorkspace.menuContributions },
+    hooks: {
+      directoryFlow: browserFlowSource, hostInfo, menuContributions: uiWorkspace.menuContributions,
+      destinationContributions: uiWorkspace.destinationContributions,
+    },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),

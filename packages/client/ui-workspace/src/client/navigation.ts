@@ -100,6 +100,80 @@ export interface UiWorkspace {
   contributeWorkspaceMenu(entry: WorkspaceMenuContribution): () => void
   /** Live registry of row-menu contributions (an observable for the browser's hook). */
   readonly menuContributions: HostObservable<MenuContributions>
+  /**
+   * Contribute destinations to the Move to… / Copy to… dialogs of local
+   * Session rows: extra groups (a remote host each, say) listed after this
+   * machine's Workspaces. Picking one hands the whole operation to the
+   * contributor's `run`, which answers in the same RemoteResult vocabulary as
+   * the Host (`session/move-live`, `session/copy-live` refusals included), so
+   * the dialogs behave identically for every destination.
+   * @param contribution - identity, live groups, and the executor.
+   * @returns disposer withdrawing the contribution.
+   */
+  contributeDestinations(contribution: DestinationContribution): () => void
+  /** Live registry of destination contributions (an observable for the browser's hook). */
+  readonly destinationContributions: HostObservable<readonly DestinationContribution[]>
+}
+
+/** One destination a contributor offers (a Workspace on another host, for instance). */
+export interface DestinationEntry {
+  /** Stable key within its group. */
+  readonly key: string
+  readonly title: string
+  /** Directory shown as the row's trailing detail. */
+  readonly path?: string
+}
+
+/** One heading of contributed destinations (one remote host, say) with its entries. */
+export interface DestinationGroup {
+  readonly id: string
+  readonly label: string
+  readonly entries: readonly DestinationEntry[]
+}
+
+/** What a dialog asks a contributor to carry out once its destination is chosen. */
+export interface DestinationRunRequest {
+  readonly action: 'move' | 'copy'
+  readonly sessionId: SessionId
+  /** Owning Workspace of the source, absent for an ungrouped Session. */
+  readonly sourceWorkspaceId?: WorkspaceId
+  readonly sourceTitle: string
+  readonly groupId: string
+  readonly destinationKey: string
+  /** Move: interrupt work in flight (after a `session/move-live` refusal). */
+  readonly stopLive?: boolean
+  /** Copy: drop the turn in progress (after a `session/copy-live` refusal). */
+  readonly truncate?: boolean
+  /** Copy: title recorded on the copy; omitted keeps the source's. */
+  readonly title?: string
+  /** Tell the Agent on its next step. */
+  readonly notify: boolean
+}
+
+/**
+ * A contributor's answer. Structural on purpose (no `RemoteError` instance),
+ * so an out-of-tree plugin can build it from plain objects; the codes are the
+ * Host's own (`session/move-live`, `session/copy-live`) so the dialogs react
+ * to a contributor's refusal exactly as to the Host's.
+ */
+export type DestinationRunResult =
+  | {
+    readonly ok: true
+    /** Shown in the dialog before it is closed; omitted closes the dialog at once. */
+    readonly summary?: string
+  }
+  | { readonly ok: false; readonly code: string; readonly message: string; readonly details?: unknown }
+
+/** One contributor of dialog destinations. */
+export interface DestinationContribution {
+  /** Stable id, unique among contributions. */
+  readonly id: string
+  /** Sort key among contributions; this machine's own Workspaces always come first. */
+  readonly order?: number
+  /** Live groups; an empty list hides the contribution. */
+  readonly groups: HostObservable<readonly DestinationGroup[]>
+  /** Carry out the move or copy to one of this contribution's destinations. */
+  readonly run: (request: DestinationRunRequest) => Promise<DestinationRunResult>
 }
 
 /** The Session row a contributed menu item acts on. */
@@ -307,6 +381,28 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   contributeWorkspaceMenu(entry: WorkspaceMenuContribution): () => void {
     return this.contribute('workspace', entry)
+  }
+
+  private destinations: readonly DestinationContribution[] = []
+  private readonly destinationListeners = new Set<() => void>()
+  readonly destinationContributions: HostObservable<readonly DestinationContribution[]> = {
+    getSnapshot: () => this.destinations,
+    subscribe: (listener) => {
+      this.destinationListeners.add(listener)
+      return () => { this.destinationListeners.delete(listener) }
+    },
+  }
+
+  contributeDestinations(contribution: DestinationContribution): () => void {
+    const publish = (next: readonly DestinationContribution[]): void => {
+      this.destinations = [...next].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      for (const listener of this.destinationListeners) listener()
+    }
+    if (this.destinations.some(candidate => candidate.id === contribution.id)) {
+      throw new Error(`uiWorkspace: duplicate destination contribution "${contribution.id}"`)
+    }
+    publish([...this.destinations, contribution])
+    return () => { publish(this.destinations.filter(candidate => candidate.id !== contribution.id)) }
   }
 
   private contribute<K extends keyof MenuContributions>(kind: K, entry: MenuContributions[K][number]): () => void {

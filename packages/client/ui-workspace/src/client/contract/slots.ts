@@ -28,7 +28,7 @@ import type { HostObservable, PropsHooks, PropsLocale, PropsRenderSlots, PropsRu
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ISessions, SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { MenuContributions } from '../navigation.ts'
+import type { DestinationContribution, MenuContributions } from '../navigation.ts'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -116,6 +116,8 @@ export type WorkspaceBrowserInjected = {
     hostInfo: HostObservable<RemoteHostFacts>
     /** Row-menu items contributed by other plugins (`ctx.uiWorkspace.contributeSessionMenu` / `contributeWorkspaceMenu`). */
     menuContributions: HostObservable<MenuContributions>
+    /** Destinations other plugins add to the Move to… / Copy to… dialogs (`ctx.uiWorkspace.contributeDestinations`). */
+    destinationContributions: HostObservable<readonly DestinationContribution[]>
   }
   /**
    * Move one Session (and its same-cwd subagent children) to another

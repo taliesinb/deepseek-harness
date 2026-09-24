@@ -12,6 +12,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { DirectoryFlowOwnerProps, WorkspaceBrowserProps } from '../src/client/contract/slots.ts'
+import type { DestinationContribution } from '../src/client/navigation.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
@@ -121,6 +122,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     useMenuContributions: selector => selector({ session: [], workspace: [] }),
+    useDestinationContributions: selector => selector([]),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
     ...overrides,
@@ -723,6 +725,54 @@ describe('WorkspaceBrowser', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('lists contributed destinations as a tree after this machine and hands a pick to the contributor', async () => {
+    const run = vi.fn<DestinationContribution['run']>()
+      .mockResolvedValueOnce({ ok: false, code: 'session/copy-live', message: 'running', details: { blockers: [{ kind: 'turn' }] } })
+      .mockResolvedValueOnce({ ok: true, summary: 'Copied to Music on remote-mac (12 KB).' })
+    const contribution: DestinationContribution = {
+      id: 'remotes',
+      groups: {
+        getSnapshot: () => [{ id: 'srv-alpha', label: 'remote-mac', entries: [{ key: 'rws-1', title: 'Music', path: '/Users/x/Music' }] }],
+        subscribe: () => () => {},
+      },
+      run,
+    }
+    const open = vi.fn()
+    const b = mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s']), workspace('beta', [])])),
+      useDestinationContributions: selector => selector([contribution]),
+      open,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制到…' }))
+    const dialog = screen.getByRole('dialog', { name: '复制会话' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /alpha/u, expanded: false }))
+    // Tree: this machine's heading and rows first, the contributed host last.
+    const menu = screen.getByRole('menu')
+    const texts = [...menu.querySelectorAll('[role="menuitem"], [role="presentation"]')].map(node => node.textContent)
+    const betaAt = texts.findIndex(text => (text ?? '').startsWith('beta'))
+    expect(texts.indexOf('本机')).toBeLessThan(betaAt)
+    expect(texts.indexOf('remote-mac')).toBeGreaterThan(betaAt)
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Music/u }))
+    expect(within(dialog).getByRole('button', { name: /Music · remote-mac/u })).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: '复制' }))
+    await act(async () => { await Promise.resolve() })
+    const first = run.mock.calls[0]![0]
+    expect(first).toMatchObject({ action: 'copy', sessionId: sid('alpha-s'), sourceWorkspaceId: wid('alpha'), groupId: 'srv-alpha', destinationKey: 'rws-1', title: 'alpha-s（副本）', notify: true })
+    expect(first).not.toHaveProperty('truncate')
+    // The contributor's refusal reads like the Host's: truncate revealed, then decided.
+    const truncate = within(dialog).getByLabelText(/只复制到最后一个已完成的回合/u) as HTMLInputElement
+    expect(truncate.checked).toBe(true)
+    fireEvent.click(within(dialog).getByRole('button', { name: '复制' }))
+    await act(async () => { await Promise.resolve() })
+    expect(run.mock.calls[1]![0]).toMatchObject({ truncate: true })
+    expect(within(dialog).getByRole('status').textContent).toBe('Copied to Music on remote-mac (12 KB).')
+    expect(open).not.toHaveBeenCalled()
+    expect(b.props.copySession).not.toHaveBeenCalled()
   })
 
   it('copies a session from the row menu: own workspace preselected, title suffixed, opens the copy; a live refusal reveals truncate', async () => {
