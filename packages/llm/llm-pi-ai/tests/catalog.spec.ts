@@ -25,6 +25,20 @@ const homes: string[] = []
 // mounted credentials seam.
 const KEY_ENV = 'PI_TEST_KEY'
 
+
+describe('pi-ai 0.87 catalog', () => {
+  it('ships Claude Opus 5.5 without a settings model override', () => {
+    const model = getBuiltinModels('anthropic').find(candidate => candidate.id === 'claude-opus-5-5')
+    expect(model).toMatchObject({
+      name: 'Claude Opus 5.5',
+      contextWindow: 1_000_000,
+      maxTokens: 128_000,
+      thinkingLevelMap: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+      compat: { forceAdaptiveThinking: true, supportsStrictTools: true, supportsTemperature: false },
+    })
+  })
+})
+
 beforeEach(() => {
   vi.stubEnv(KEY_ENV, 'test-key')
 })
@@ -1079,9 +1093,9 @@ describe('compat switches', () => {
   it('refuses a valueless compat key on a model entry too', () => {
     expect(() => resolveProfiles({
       deepseek: {
-        modelOverrides: { 'deepseek-v4-flash': { compat: { requiresReasoningContentOnAssistantMessages: null } } as never },
+        modelOverrides: { 'deepseek-flash': { compat: { requiresReasoningContentOnAssistantMessages: null } } as never },
       },
-    })).toThrow(/model "deepseek-v4-flash" sets compat "requiresReasoningContentOnAssistantMessages" with no value/)
+    })).toThrow(/model "deepseek-flash" sets compat "requiresReasoningContentOnAssistantMessages" with no value/)
   })
 
   it('serves the Responses compat type on every protocol pi-ai gives it to', () => {
@@ -1144,7 +1158,7 @@ describe('resolution snapshots', () => {
     const inFlight = (async () => {
       for await (const chunk of adapter.stream({
         provider: 'deepseek',
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-flash',
         messages: [],
       })) chunks.push(chunk)
     })()
@@ -1173,7 +1187,7 @@ describe('resolution snapshots', () => {
     })
     const drain = async (): Promise<void> => {
       for await (const _chunk of adapter.stream({
-        provider: 'deepseek', model: 'deepseek-v4-flash', messages: [],
+        provider: 'deepseek', model: 'deepseek-flash', messages: [],
       })) { /* drain */ }
     }
 

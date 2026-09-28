@@ -10,7 +10,7 @@
 
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { Message, ModelMessageSource, ReplayEnvelope } from '@deepseek-ai/dsh-llm'
-import type { Api, AssistantMessage, Usage as PiUsage } from '@earendil-works/pi-ai'
+import type { Api, AssistantMessage, JsonObject, JsonValue, Usage as PiUsage } from '@earendil-works/pi-ai'
 
 /** Per-block half of the pi-ai replay envelope, one entry per content block. */
 export type PiAiReplayBlock =
@@ -40,13 +40,19 @@ interface PiAiReplayState {
   blocks: PiAiReplayBlock[]
 }
 
+/** Whether a parsed value is JSON-safe for pi-ai's stricter tool-call type. */
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  if (typeof value !== 'object') return false
+  return Object.values(value).every(isJsonValue)
+}
+
 /** Parse tool-call argument JSON; tolerate model malformations with {}. */
-function parseArguments(raw: string): Record<string, unknown> {
+function parseArguments(raw: string): JsonObject {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && isJsonValue(parsed)) return parsed as JsonObject
   } catch {
     // fall through
   }
