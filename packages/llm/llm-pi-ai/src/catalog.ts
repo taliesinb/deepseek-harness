@@ -803,6 +803,57 @@ function resolveModelCompat(
   return { compat: { ...inherited, ...configured } as ModelCompat }
 }
 
+const ANTHROPIC_LATEST_SUFFIX = ' (latest)'
+const ANTHROPIC_FAMILIES = ['fable', 'haiku', 'opus', 'sonnet'] as const
+
+interface AnthropicVersionedModel {
+  model: Model<Api>
+  family: typeof ANTHROPIC_FAMILIES[number]
+  version: readonly number[]
+}
+
+function anthropicVersion(model: Model<Api>): AnthropicVersionedModel | undefined {
+  const match = /^claude-(fable|haiku|opus|sonnet)-(\d+)(?:-(\d+))?$/u.exec(model.id)
+  if (match === null) return undefined
+  const family = match[1] as typeof ANTHROPIC_FAMILIES[number]
+  const major = match[2]
+  if (major === undefined) return undefined
+  return { model, family, version: [Number(major), Number(match[3] ?? 0)] }
+}
+
+function compareVersion(left: readonly number[], right: readonly number[]): number {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
+}
+
+/** Apply DSH's Anthropic display policy to any route backed by that catalog. */
+function normalizeAnthropicModels(models: readonly Model<Api>[]): Model<Api>[] {
+  const parsed = models.map(anthropicVersion).filter((value): value is AnthropicVersionedModel => value !== undefined)
+  const latest = new Map<string, string>()
+  for (const candidate of parsed) {
+    const currentId = latest.get(candidate.family)
+    const current = parsed.find(value => value.model.id === currentId)
+    if (current === undefined || compareVersion(candidate.version, current.version) > 0) latest.set(candidate.family, candidate.model.id)
+  }
+  const normalized = models.map((model) => {
+    const name = model.name.endsWith(ANTHROPIC_LATEST_SUFFIX)
+      ? model.name.slice(0, -ANTHROPIC_LATEST_SUFFIX.length)
+      : model.name
+    const parsedModel = anthropicVersion(model)
+    const isLatest = parsedModel !== undefined && latest.get(parsedModel.family) === model.id
+    return { ...model, name: `${name}${isLatest ? ANTHROPIC_LATEST_SUFFIX : ''}` }
+  })
+  return normalized.sort((left, right) => {
+    const leftLatest = left.name.endsWith(ANTHROPIC_LATEST_SUFFIX)
+    const rightLatest = right.name.endsWith(ANTHROPIC_LATEST_SUFFIX)
+    if (leftLatest !== rightLatest) return leftLatest ? -1 : 1
+    return 0
+  })
+}
+
 /** One route's materialized catalog, plus the request caps its profile chose. */
 export interface RouteCatalog {
   /** The materialized models in configuration order. */
@@ -959,5 +1010,8 @@ export function resolveRouteModels(
     invalid(provider, `sets compat "${field}", but no model on the route speaks a protocol that takes it;`
       + ` it exists on ${takers.join(', ')}`)
   }
-  return { models: serviceableModels, configuredMaxTokens, modelErrors }
+  const displayedModels = defaults.size > 0 && [...defaults.values()].every(model => model.provider === 'anthropic')
+    ? normalizeAnthropicModels(serviceableModels)
+    : serviceableModels
+  return { models: displayedModels, configuredMaxTokens, modelErrors }
 }

@@ -11,6 +11,7 @@ import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
+import { resolveRouteModels } from '../src/catalog.ts'
 import { resolveProfiles } from '../src/config.ts'
 import { createModels, createProvider, getSupportedThinkingLevels } from '../src/models.ts'
 import { buildProvider, supportedProtocols } from '../src/provider.ts'
@@ -36,6 +37,32 @@ describe('pi-ai 0.87 catalog', () => {
       thinkingLevelMap: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
       compat: { forceAdaptiveThinking: true, supportsStrictTools: true, supportsTemperature: false },
     })
+  })
+})
+
+
+describe('Anthropic catalog display policy', () => {
+  it('moves one numerically newest model per Claude family to the top and labels it latest', () => {
+    const models = resolveProfiles({ anthropic: {} }).get('anthropic')?.piProvider?.getModels() ?? []
+    const latest = models.filter(model => model.name.endsWith(' (latest)'))
+    expect(latest.map(model => model.id)).toEqual([
+      'claude-fable-5-1',
+      'claude-haiku-4-5',
+      'claude-opus-5-5',
+      'claude-sonnet-5',
+    ])
+    expect(models.find(model => model.id === 'claude-opus-4-5')?.name).toBe('Claude Opus 4.5')
+    expect(models.slice(0, latest.length).every(model => model.name.endsWith(' (latest)'))).toBe(true)
+  })
+
+  it('applies by Anthropic catalog identity rather than requiring the route key', () => {
+    const models = resolveRouteModels({
+      provider: 'anthropic',
+      defaultContextWindow: 262_144,
+      defaultMaxTokens: 32_768,
+      defaultInput: ['text'],
+    }).models.map(model => ({ ...model, provider: 'anthropic-oauth' }))
+    expect(models.find(model => model.id === 'claude-opus-5-5')?.name).toBe('Claude Opus 5.5 (latest)')
   })
 })
 
