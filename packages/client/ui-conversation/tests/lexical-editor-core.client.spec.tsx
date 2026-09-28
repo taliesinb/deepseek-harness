@@ -427,7 +427,7 @@ describe('detect-span application', () => {
 
 describe('claim precedence over text-ref entities', () => {
   const TOKEN_STYLE = 'color: var(--dsw-alias-state-warn-label)'
-  const LEXICON: ReadonlyMap<'/' | '@', readonly string[]> = new Map([['/', ['plan']]])
+  const LEXICON: ReadonlyMap<string, readonly string[]> = new Map([['/', ['plan']]])
 
   it.each(['/plan', '/plan '])('keeps the lexicon-listed %j claim plain and warn-styled until release', (token) => {
     const editor = makeEditor()
