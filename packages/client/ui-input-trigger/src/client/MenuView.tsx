@@ -23,8 +23,8 @@ import type { MenuKey } from './locales.ts'
 /** Full menu props: injected face + the locale seat. */
 export type MenuViewProps = MenuViewInjected & PropsLocale<'slash.menu'>
 
-/** Height cap that fits the two headings and eight built-in command rows. */
-const MAX_HEIGHT = 400
+/** Eight ordinary 40px rows plus the menu shell's 8px vertical padding. */
+const MAX_HEIGHT = 328
 
 /** DOM id of one option row (the aria-activedescendant target). */
 function optionId(source: string, index: number): string {
@@ -51,7 +51,25 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
   // The list is bottom-anchored above the composer; clamp the design cap to
   // the space above it, re-measured on every store update (the anchor moves
   // when the composer grows).
-  const maxHeight = useAnchoredMaxHeight(listRef, MAX_HEIGHT, state)
+  const anchoredMaxHeight = useAnchoredMaxHeight(listRef, MAX_HEIGHT, state)
+  const [viewportMaxHeight, setViewportMaxHeight] = useState(MAX_HEIGHT)
+  useLayoutEffect(() => {
+    if (!state.open) return
+    const measure = (): void => {
+      const menu = listRef.current
+      if (menu === null) return
+      const bottom = menu.getBoundingClientRect().bottom
+      // The menu is bottom-anchored above the composer. Cap against the real
+      // viewport rather than the page, so a centered hero composer cannot push
+      // the top of a tall menu off-screen. Eight ordinary rows is the design
+      // maximum; smaller viewports simply scroll sooner.
+      setViewportMaxHeight(Math.max(0, Math.min(MAX_HEIGHT, bottom - 8)))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => { window.removeEventListener('resize', measure) }
+  }, [state.open, state.groups])
+  const maxHeight = Math.min(anchoredMaxHeight, viewportMaxHeight)
   const updateOverflowHint = useCallback(() => {
     const viewport = viewportRef.current
     setHasOverflowBelow(viewport !== null
@@ -60,6 +78,10 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
   useLayoutEffect(() => {
     updateOverflowHint()
   }, [state, maxHeight, updateOverflowHint])
+  useLayoutEffect(() => {
+    if (!state.open) return
+    viewportRef.current?.scrollTo({ top: 0 })
+  }, [state.open, state.hit?.trigger, state.hit?.span.start])
   const highlight = state.open ? state.highlight : null
   // Focus stays in the textarea (combobox pattern), so the browser never
   // scrolls the active option into view on keyboard moves — do it here.
@@ -175,7 +197,18 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                               : <item.icon size={16} />}
                           </span>
                         )}
-                        <span className={css.itemName}>{item.label ?? item.name}</span>
+                        <span className={css.itemName}>
+                          {item.labelSegments === undefined
+                            ? (item.label ?? item.name)
+                            : item.labelSegments.map((segment, segmentIndex) => (
+                              <span
+                                key={`${String(segmentIndex)}-${segment.text}`}
+                                className={segment.dim === true ? css.itemNameDim : undefined}
+                              >
+                                {segment.text}
+                              </span>
+                            ))}
+                        </span>
                         {item.label !== undefined && item.label.toLowerCase() !== item.name.toLowerCase() && (
                           <span className={css.itemAlias}>{item.name}</span>
                         )}

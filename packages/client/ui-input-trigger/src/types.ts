@@ -56,6 +56,12 @@ export interface InputTriggerCandidate {
    * findable by its command name).
    */
   readonly label?: string
+  /** Optional structured label segments; when present they render instead of `label`/`name`. */
+  readonly labelSegments?: readonly {
+    readonly text: string
+    /** Quiet ink for separators or secondary pieces. */
+    readonly dim?: boolean
+  }[]
   readonly description?: string
   /** Reference glyph token, or an icon component from the shared icon set. */
   readonly icon?: InputTriggerCandidateIcon | ComponentType<IconProps>

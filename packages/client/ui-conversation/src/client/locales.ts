@@ -178,7 +178,7 @@ export const en = {
   'placeholder.default': 'Message or run a task, / commands, @ files or sessions',
   'placeholder.unavailable': 'Session unavailable',
   'placeholder.parentOffline': 'Parent session offline; sending is unavailable but you can still stop the run',
-  'placeholder.hero': 'Describe what you want to build, / commands, @ files or sessions',
+  'placeholder.hero': 'Describe what you want to build, / commands, @ files or % sessions',
   'placeholder.workspace': 'Choose a workspace to start',
   'placeholder.steerQueue': 'Cmd/Ctrl+Enter steers all queued messages',
   'input.commands': 'Add files or run commands',

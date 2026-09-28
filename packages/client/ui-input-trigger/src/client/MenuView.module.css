@@ -9,7 +9,7 @@
   box-sizing: border-box;
   /* Fits the built-in rows without scrolling and still clamps at runtime to
    * the space above the composer (inline max-height set in MenuView.tsx). */
-  max-height: 400px;
+  max-height: 328px;
   overflow: hidden;
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens
      (see ui-theme styles/scrollbar.css for the rebinding contract). */
@@ -103,6 +103,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.itemNameDim {
+  color: var(--dsw-alias-label-tertiary);
 }
 
 /* The command name beside a localized title, in the description's ink so

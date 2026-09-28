@@ -34,7 +34,7 @@
   - img
   - text: Standard mode
   - img
-- textbox "Describe what you want to build, / commands, @ files or sessions":
+- textbox "Describe what you want to build, / commands, @ files or % sessions":
   - paragraph
 - button "Add files or run commands":
   - img
