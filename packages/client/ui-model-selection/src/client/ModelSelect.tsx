@@ -414,7 +414,7 @@ export function ModelSelect(
                   const anthropic = group.name.toLocaleLowerCase().startsWith('anthropic')
                   return (
                     <section role="group" aria-labelledby={headingId} className={clsx(css.group, anthropic && css.anthropicGroup)} key={group.id}>
-                      <div className={css.groupTitle} id={headingId}>{group.name}</div>
+                      <div className={css.groupTitle} id={headingId}>{anthropic && group.name === 'anthropic' ? 'Anthropic' : group.name}</div>
                       {group.models.map((model) => {
                         const selected = state.current?.provider === group.id && state.current.model === model.id
                         return (
