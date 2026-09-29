@@ -7,6 +7,12 @@ export interface ModelSection extends ModelProviderGroup {
 }
 
 
+function stableLatestCount(modelCount: number, latestCount: number): number {
+  const historicalCount = modelCount - latestCount
+  return latestCount === 1 || historicalCount === 1 ? 0 : latestCount
+}
+
+
 export type ProviderRoute = 'oauth' | 'api' | 'openrouter' | 'local'
 
 export function providerRoute(section: Pick<ModelProviderGroup, 'id' | 'name'>): ProviderRoute {
@@ -70,7 +76,14 @@ function version(name: string): readonly number[] {
   return match?.[1]?.split('.').map(Number) ?? []
 }
 
-function major(name: string): number | undefined { return version(name)[0] }
+function generation(name: string, family?: string): readonly number[] {
+  const value = version(name)
+  return family === 'Qwen' || family === 'Z.ai' ? value.slice(0, 2) : value.slice(0, 1)
+}
+
+function sameGeneration(left: readonly number[], right: readonly number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
 function namedLatest(name: string): boolean { return /(?:\s\(latest\)|\sLatest)$/iu.test(name) }
 function normalizeName(name: string): string {
   return name.trim()
@@ -113,6 +126,7 @@ function freeModel(name: string): boolean { return /(?:\s\(free\)|\sFree)$/iu.te
 function sortedModels(
   models: readonly ModelCatalogModel[],
   preserveNamedLatest = false,
+  family?: string,
 ): { models: readonly ModelCatalogModel[]; latestCount: number } {
   const explicitlyLatest = models.filter(model => namedLatest(model.name))
   const normalizedForGeneration = models.filter(model => !/\s\d{4}$/u.test(model.name))
@@ -120,9 +134,15 @@ function sortedModels(
     ? models.filter(model => /^(?:GPT-6 (?:Astra|Luna|Sol)|GPT-5(?:\.3)? Chat)/u.test(model.name))
     : []
   const cleaned = models.map(model => ({ ...model, name: normalizeName(model.name) }))
-  const majors = normalizedForGeneration.map(model => major(normalizeName(model.name)))
-    .filter((value): value is number => value !== undefined)
-  const newest = majors.length === 0 ? undefined : Math.max(...majors)
+  const generations = normalizedForGeneration.map(model => generation(normalizeName(model.name), family))
+    .filter(value => value.length > 0)
+  const newest = generations.sort((left, right) => {
+    for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+      const delta = (right[index] ?? 0) - (left[index] ?? 0)
+      if (delta !== 0) return delta
+    }
+    return 0
+  })[0]
   const sorted = [...cleaned].sort((left, right) => {
     const a = version(left.name); const b = version(right.name)
     for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
@@ -133,12 +153,15 @@ function sortedModels(
   })
   const selectedLatest = openAiApiLatest.length > 0 ? openAiApiLatest : explicitlyLatest
   const latestIds = new Set(selectedLatest.map(model => model.id))
-  const latest = selectedLatest.length > 0
+  const latestCandidates = selectedLatest.length > 0
     ? sorted.filter(model => latestIds.has(model.id))
-    : newest === undefined ? [] : sorted.filter(model => major(model.name) === newest && !/\s\d{4}$/u.test(model.name))
-  const regular = sorted.filter(model => !latest.includes(model) && !freeModel(model.name) && !/Router|^Auto$/u.test(model.name))
-  const free = sorted.filter(model => !latest.includes(model) && freeModel(model.name))
-  const routers = sorted.filter(model => !latest.includes(model) && !freeModel(model.name) && /Router|^Auto$/u.test(model.name))
+    : newest === undefined ? [] : sorted.filter(model => (
+      sameGeneration(generation(model.name, family), newest) && !/\s\d{4}$/u.test(model.name)
+    ))
+  const latest = latestCandidates.filter(model => !freeModel(model.name))
+  const regular = sorted.filter(model => !latestCandidates.includes(model) && !freeModel(model.name) && !/Router|^Auto$/u.test(model.name))
+  const free = sorted.filter(model => freeModel(model.name))
+  const routers = sorted.filter(model => !latestCandidates.includes(model) && !freeModel(model.name) && /Router|^Auto$/u.test(model.name))
   const ordered = [...latest, ...regular, ...free, ...routers]
   return {
     models: ordered,
@@ -178,8 +201,8 @@ function splitOpenRouter(group: ModelProviderGroup, sourceIndex: number): ModelS
     }
   }
   const sections = [...families].map(([family, models], familyIndex): ModelSection => {
-    const sorted = sortedModels(models, false)
-    return { id: group.id, name: `${family}: OpenRouter`, models: sorted.models, latestCount: sorted.latestCount, sourceIndex: sourceIndex * 1000 + familyIndex }
+    const sorted = sortedModels(models, false, family)
+    return { id: group.id, name: `${family}: OpenRouter`, models: sorted.models, latestCount: stableLatestCount(sorted.models.length, sorted.latestCount), sourceIndex: sourceIndex * 1000 + familyIndex }
   })
   if (remainder.length > 0) {
     const sorted = sortedModels(remainder)
@@ -197,8 +220,9 @@ export function providerSections(groups: readonly ModelProviderGroup[]): readonl
     const sorted = sortedModels(
       group.models.filter(model => !batch.test(model.name) && !dated.test(model.name)),
       family === 'OpenAI' && kind === 'API',
+      family,
     )
-    return [{ ...group, name: `${family}: ${kind}`, models: sorted.models, latestCount: sorted.latestCount, sourceIndex }]
+    return [{ ...group, name: `${family}: ${kind}`, models: sorted.models, latestCount: stableLatestCount(sorted.models.length, sorted.latestCount), sourceIndex }]
   })
   if (local.length > 0) {
     const sorted = sortedModels(local)

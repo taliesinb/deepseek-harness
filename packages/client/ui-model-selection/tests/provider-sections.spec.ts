@@ -59,6 +59,39 @@ describe('providerSections', () => {
     ]))
   })
 
+  it('treats Qwen 3.8 OpenRouter models as latest', () => {
+    const sections = providerSections([group('openrouter', 'openrouter', [
+      'Qwen: Qwen3.8 14B', 'Qwen: Qwen3.8 32B', 'Qwen: Qwen3.5 72B', 'Qwen: Qwen3 235B',
+    ])])
+    const qwen = sections.find(section => section.name === 'Qwen: OpenRouter')
+    expect(qwen?.models.slice(0, 2).map(entry => entry.name)).toEqual(['Qwen 3.8 14B', 'Qwen 3.8 32B'])
+    expect(qwen?.latestCount).toBe(2)
+  })
+
+
+  it('treats the newest GLM minor generation as latest', () => {
+    const [section] = providerSections([group('zai', 'zai', [
+      'GLM-5.3', 'GLM-5.3-Flash', 'GLM-5.3-Highspeed', 'GLM-5.2', 'GLM-5.2-Highspeed', 'GLM-5-Turbo', 'GLM-4.7',
+    ])])
+    expect(section?.models.slice(0, 3).map(entry => entry.name)).toEqual([
+      'GLM 5.3', 'GLM 5.3 Flash', 'GLM 5.3-Highspeed',
+    ])
+    expect(section?.latestCount).toBe(3)
+  })
+
+  it('moves free variants to a single group after paid models', () => {
+    const sections = providerSections([group('openrouter', 'openrouter', [
+      'NVIDIA: Nemotron 3.5 Lightning', 'NVIDIA: Nemotron 3.5 Lightning Free',
+      'NVIDIA: Nemotron 3 Super', 'NVIDIA: Nemotron 3 Super Free',
+      'NVIDIA: Nemotron 3 Ultra', 'NVIDIA: Nemotron 3 Ultra Free',
+    ])])
+    const nvidia = sections.find(section => section.name === 'NVIDIA: OpenRouter')
+    expect(nvidia?.models.map(entry => entry.name)).toEqual([
+      'Nemotron 3.5 Lightning', 'Nemotron 3 Super', 'Nemotron 3 Ultra',
+      'Nemotron 3.5 Lightning Free', 'Nemotron 3 Super Free', 'Nemotron 3 Ultra Free',
+    ])
+  })
+
   it('groups the newest major generation before a divider and sorts versions descending', () => {
     const [section] = providerSections([group('openai', 'openai', [
       'GPT-5.4', 'GPT-6 Sol', 'GPT-5.6', 'GPT-6 Luna', 'GPT-5.5',
@@ -90,5 +123,15 @@ describe('Local provider preprocessing', () => {
     ])
     expect(sections.map(section => section.name)).toEqual(['Anthropic: API', 'OpenRouter', 'Local'])
     expect(sections.at(-1)?.models.map(entry => entry.name)).toEqual(['qwen3.5-4b', 'Apple Foundation Model'])
+  })
+})
+
+
+describe('latest grouping confidence', () => {
+  it('drops the distinction when either side has exactly one model', () => {
+    const sections = providerSections([{ id: 'provider', name: 'Example', models: [
+      model('current', 'Current Latest'), model('older-2', 'Older 2'), model('older-1', 'Older 1'),
+    ] }])
+    expect(sections[0]?.latestCount).toBe(0)
   })
 })

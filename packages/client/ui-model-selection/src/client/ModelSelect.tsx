@@ -26,7 +26,7 @@ import clsx from 'clsx'
 import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
-  IconApiOutline14, IconDataOutline16, IconWarningOutline16, Toast,
+  IconDataOutline16, IconWarningOutline16, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelSelectInjected } from './slots.ts'
@@ -76,7 +76,7 @@ export function ModelSelect(
     () => directory.getSnapshot(),
   )
   const [open, setOpen] = useState(false)
-  const [filters, setFilters] = useState<Readonly<Record<string, readonly Capability[]>>>({})
+  const [filters, setFilters] = useState<Readonly<Record<string, Readonly<Partial<Record<Capability, 1 | -1>>>>>>({})
   const sections = useMemo(() => providerSections(state.groups), [state.groups])
   const [pane, setPane] = useState<Pane>('root')
   // The in-menu error strip serves catalog loads (its Retry re-runs the
@@ -89,6 +89,8 @@ export function ModelSelect(
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+
+  const filterAnchorRef = useRef<{ name: string; localTop: number } | null>(null)
   const [menuPos, setMenuPos] = useState<CSSProperties | null>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
@@ -129,6 +131,19 @@ export function ModelSelect(
       })),
     ], [reasoning, t])
   const busy = state.status === 'selecting'
+
+  useLayoutEffect(() => {
+    const anchor = filterAnchorRef.current
+    if (anchor === null || menuRef.current === null) return
+    const headers = [...menuRef.current.querySelectorAll<HTMLElement>(`.${css.groupHeader}`)]
+    const header = headers.find(value => value.dataset.groupName === anchor.name)
+    const scrollport = menuRef.current.querySelector<HTMLElement>('.scrollable')
+    if (header !== undefined && scrollport !== null) {
+      const localTop = header.getBoundingClientRect().top - scrollport.getBoundingClientRect().top
+      scrollport.scrollTop += localTop - anchor.localTop
+    }
+    filterAnchorRef.current = null
+  }, [filters])
   const currentRoute = currentChoice === undefined ? 'local' : providerRoute(currentChoice.group)
 
   const reload = (): void => {
@@ -441,77 +456,113 @@ export function ModelSelect(
               <div className={clsx(css.groups, 'scrollable')}>
                 {sections.map((group) => {
                   const headingId = `${id}-${group.id}-${group.sourceIndex}`
-                  const active = filters[group.name] ?? []
-                  const capabilities = (['free', 'latest', 'vision', 'thinking', 'tools'] as const)
-                    .filter(capability => group.models.some(model => modelHasCapability(group, model, capability)))
-                  const universal = capabilities.filter(capability => group.models
-                    .every(model => modelHasCapability(group, model, capability)))
-                  const models = group.models.filter(model => (
-                    (group.latestCount === 0 || active.includes('latest') || modelHasCapability(group, model, 'latest'))
-                    && active.filter(capability => capability !== 'latest')
-                      .every(capability => modelHasCapability(group, model, capability))
+                  const currentModelIndex = group.models.findIndex(model => (
+                    state.current?.provider === group.id && state.current.model === model.id
                   ))
-                  const toggle = (capability: Capability): void => {
-                    setFilters(current => ({
-                      ...current,
-                      [group.name]: active.includes(capability)
-                        ? active.filter(value => value !== capability)
-                        : [...active, capability],
-                    }))
-                  }
+                  const currentIsHistorical = currentModelIndex >= group.latestCount && currentModelIndex !== -1
+                  const selectedFilters = filters[group.name]
+                    ?? (group.latestCount > 0 && !currentIsHistorical ? { latest: 1 as const } : {})
+                  const capabilities = (['free', 'vision', 'thinking', 'tools', 'latest'] as const)
+                    .filter(capability => group.models.some(model => modelHasCapability(group, model, capability)))
+                  const models = group.models.filter(model => capabilities.every((capability) => {
+                    const filter = selectedFilters[capability] ?? 0
+                    if (filter === 0) return true
+                    const matches = modelHasCapability(group, model, capability)
+                    return filter === 1 ? matches : !matches
+                  }))
+                  const firstHistoricalModel = group.latestCount > 0 ? group.models[group.latestCount] : undefined
+                  const firstFreeModel = group.models.find(model => model.name.endsWith(' Free'))
+                  const firstRouterModel = group.models.find(model => /Router|^Auto$/u.test(model.name))
+                  const hasOtherFilters = Object.keys(selectedFilters).length > 0
 
+                  const enabledFilters = Object.entries(selectedFilters) as [Capability, 1 | -1][]
+                  const simpleSubject = enabledFilters.length === 1 && enabledFilters[0]?.[1] === 1
+                    ? enabledFilters[0][0] === 'latest' ? 'latest'
+                      : enabledFilters[0][0] === 'tools' ? 'tool-use'
+                        : enabledFilters[0][0] === 'free' ? 'free'
+                          : enabledFilters[0][0]
+                    : undefined
+                  const quantifiedSubject = simpleSubject ?? 'selected'
+                  const universal = capabilities.filter(capability => selectedFilters[capability] === undefined
+                    && models.length > 0 && models.every(model => modelHasCapability(group, model, capability)))
+                  const excluded = capabilities.filter(capability => selectedFilters[capability] === undefined
+                    && models.length > 0 && !models.some(model => modelHasCapability(group, model, capability)))
+                  const fullUniversal = (capability: Capability): boolean => group.models
+                    .every(model => modelHasCapability(group, model, capability))
+                  const noun = (capability: Exclude<Capability, 'latest'>): string => capability === 'tools'
+                    ? 'tool-use' : capability === 'free' ? 'cost' : capability
                   const tooltip = (capability: Capability): string => {
+                    const filter = selectedFilters[capability] ?? 0
+                    if (capability === 'latest') {
+                      if (universal.includes(capability)) return hasOtherFilters ? 'All selected models are latest' : 'All models are latest'
+                      if (excluded.includes(capability)) return hasOtherFilters ? `All ${quantifiedSubject} models are historic` : 'All models are historic'
+                      return filter === 1 ? 'Showing latest models' : filter === -1 ? 'Showing historic models' : 'Not filtering on date'
+                    }
+                    if (excluded.includes(capability)) {
+                      if (capability === 'free') return `No ${quantifiedSubject} models are free`
+                      if (capability === 'vision') return `No ${quantifiedSubject} models have vision`
+                      if (capability === 'thinking') return `No ${quantifiedSubject} models can think`
+                      return `No ${quantifiedSubject} models can use tools`
+                    }
                     if (universal.includes(capability)) {
-                      if (capability === 'vision') return 'All models support vision.'
-                      if (capability === 'thinking') return 'All models support thinking.'
-                      if (capability === 'tools') return 'All models support tool use.'
-                      if (capability === 'free') return 'All models are free.'
+                      const selected = hasOtherFilters && !fullUniversal(capability) ? `${quantifiedSubject} ` : ''
+                      if (capability === 'free') return `All ${selected}models are free`
+                      if (capability === 'vision') return `All ${selected}models have vision`
+                      if (capability === 'thinking') return `All ${selected}models can think`
+                      return `All ${selected}models can use tools`
                     }
-                    if (active.includes(capability)) return capability === 'latest' ? 'Hide older models.' : 'Remove filter.'
-                    const labels: Record<Capability, string> = {
-                      free: 'Only show free models.', latest: 'Show older models.',
-                      vision: 'Only show vision models.', thinking: 'Only show thinking models.',
-                      tools: 'Only show tool-use models.',
-                    }
-                    return labels[capability]
+                    return filter === 1
+                      ? `Showing ${capability === 'free' ? 'free' : noun(capability)} models`
+                      : filter === -1
+                        ? `Hiding ${capability === 'free' ? 'free' : noun(capability)} models`
+                        : `Not filtering on ${noun(capability)}`
                   }
                   const filterProps = (capability: Capability) => ({
-                    className: clsx(
-                      css.capabilityFilter,
-                      active.includes(capability) && css.capabilityFilterActive,
+                    className: clsx(css.capabilityFilter,
+                      selectedFilters[capability] === 1 && css.capabilityFilterInclude,
+                      selectedFilters[capability] === -1 && css.capabilityFilterExclude,
                       universal.includes(capability) && css.capabilityFilterUniversal,
-                    ),
+                      excluded.includes(capability) && css.capabilityFilterExcluded),
                     'aria-label': tooltip(capability),
-                    'aria-pressed': active.includes(capability),
-                    'aria-disabled': universal.includes(capability),
+                    'aria-pressed': selectedFilters[capability] !== undefined,
+                    'aria-disabled': universal.includes(capability) || excluded.includes(capability),
                     'data-tooltip': tooltip(capability),
-                    onMouseEnter: (event: React.MouseEvent<HTMLButtonElement>) => {
-                      const bubble = event.currentTarget.parentElement?.querySelector<HTMLElement>('[data-filter-tooltip]')
-                      if (bubble !== undefined && bubble !== null) bubble.textContent = tooltip(capability)
-                    },
                     onMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => { event.preventDefault() },
-                    onClick: () => { if (!universal.includes(capability)) toggle(capability) },
+                    onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+                      if (universal.includes(capability) || excluded.includes(capability)) return
+                      const header = event.currentTarget.closest<HTMLElement>(`.${css.groupHeader}`)
+                      const scrollport = event.currentTarget.closest<HTMLElement>('.scrollable')
+                      if (header !== null && scrollport !== null) filterAnchorRef.current = {
+                        name: group.name,
+                        localTop: header.getBoundingClientRect().top - scrollport.getBoundingClientRect().top,
+                      }
+                      const current = selectedFilters[capability] ?? 0
+                      const next = current === 0 ? 1 : current === 1 ? -1 : 0
+                      setFilters(all => ({ ...all, [group.name]: {
+                        ...selectedFilters, [capability]: next === 0 ? undefined : next,
+                      } }))
+                    },
                   })
                   return (
                     <section role="group" aria-labelledby={headingId} className={css.group} key={`${group.name}-${group.sourceIndex}`}>
-                      <div className={css.groupHeader}>
-                        <div className={css.groupTitle} id={headingId}><span className={css.instantTooltip} data-tooltip={routeLabel(providerRoute(group))}><RouteIcon route={providerRoute(group)} className={css.routeIcon} /></span><span>{group.name.replace(/: (?:OAuth|API|OpenRouter)$/u, '')}</span></div>
+                      <div className={css.groupHeader} data-group-name={group.name} onMouseDown={(event) => { event.preventDefault() }}>
+                        <div className={css.groupTitle} id={headingId}><span className={css.routeTooltip} data-tooltip={routeLabel(providerRoute(group))}><RouteIcon route={providerRoute(group)} className={css.routeIcon} /></span><span>{group.name.replace(/: (?:OAuth|API|OpenRouter)$/u, '')}</span></div>
                         <div className={css.capabilityFilters} aria-label={`${group.name} capability filters`}>
-                          <div className={css.tooltipBubble} data-filter-tooltip />
-                          {capabilities.includes('free') && <button type="button" {...filterProps('free')}><span className={css.freeIcon} aria-hidden="true">$</span></button>}
-                          {capabilities.includes('latest') && <button type="button" {...filterProps('latest')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.35" /><path d="M8 4.5V8l2.6 1.6" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg></button>}
+                          {capabilities.includes('free') && <button type="button" {...filterProps('free')}><span className={css.freeIcon} aria-hidden="true">𑯰</span></button>}
                           {capabilities.includes('vision') && <button type="button" {...filterProps('vision')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M1.2 8s2.5-4 6.8-4 6.8 4 6.8 4-2.5 4-6.8 4-6.8-4-6.8-4Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="8" cy="8" r="2" fill="currentColor" /></svg></button>}
                           {capabilities.includes('thinking') && <button type="button" {...filterProps('thinking')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 9.2c-.8-.7-1.3-1.7-1.3-2.8A3.8 3.8 0 0 1 8 2.6a3.8 3.8 0 0 1 3.8 3.8c0 1.2-.5 2.2-1.4 2.9-.5.4-.7.8-.8 1.2H6.3c-.1-.5-.3-.9-.8-1.3Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="M5.8 12h4.4M6.3 14h3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg></button>}
-                          {capabilities.includes('tools') && <button type="button" {...filterProps('tools')}><IconApiOutline14 size={14} /></button>}
+                          {capabilities.includes('tools') && <button type="button" {...filterProps('tools')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3.3a3.8 3.8 0 0 1-4.8 4.8l-5.1 5.1a1.6 1.6 0 1 1-2.3-2.3l5.1-5.1A3.8 3.8 0 0 1 11.7 1l-2.3 2.3 2.3 2.3L14 3.3Z" /></svg></button>}
+                          {capabilities.includes('latest') && <button type="button" {...filterProps('latest')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.35" /><path d="M8 4.5V8l2.6 1.6" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg></button>}
+
                         </div>
                       </div>
                       {models.map((model, modelIndex) => {
                         const selected = state.current?.provider === group.id && state.current.model === model.id
                         return (
                           <div key={model.id}>
-                            {group.latestCount > 0 && modelIndex === group.latestCount && <div className={css.latestDivider} />}
-                            {modelIndex > group.latestCount && model.name.endsWith(' Free') && !models[modelIndex - 1]?.name.endsWith(' Free') && <div className={css.latestDivider} />}
-                            {modelIndex > group.latestCount && /Router|^Auto$/u.test(model.name) && !/Router|^Auto$/u.test(models[modelIndex - 1]?.name ?? '') && <div className={css.latestDivider} />}
+                            {model === firstHistoricalModel && modelIndex > 0 && <div className={css.latestDivider} />}
+                            {model === firstFreeModel && modelIndex > 0 && <div className={css.latestDivider} />}
+                            {model === firstRouterModel && modelIndex > 0 && <div className={css.latestDivider} />}
                             <button ref={itemRef()} type="button" role="menuitemradio" aria-checked={selected} className={clsx(css.option, selected && css.selected)} title={model.name} disabled={busy} onClick={() => { choose({ provider: group.id, model: model.id }) }}>
                               <span className={css.optionCopy}><span className={css.modelName}>{group.name.startsWith('Anthropic:') ? model.name.replace(/^Claude /u, '') : model.name}</span></span>
                               <span className={css.check}>{selected ? <IconCheckOutline16 /> : null}</span>

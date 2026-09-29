@@ -113,9 +113,9 @@
   flex-direction: column;
   /* Let the visible pane's rows set the card width, but keep pathological ids
      and narrow screens inside a bounded card where ellipsis remains. */
-  width: max-content;
-  min-width: min(240px, calc(100vw - 32px));
-  max-width: min(420px, calc(100vw - 32px));
+  width: min(300px, calc(100vw - 32px));
+  min-width: min(300px, calc(100vw - 32px));
+  max-width: min(300px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 96px));
   overflow: hidden;
   padding: 4px;
@@ -183,7 +183,7 @@
 .group + .group {
   margin-top: 7px;
   padding-top: 7px;
-  border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l3) 45%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--dsw-alias-border-l3) 45%, transparent);
 }
 
 .groupHeader {
@@ -213,7 +213,7 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 1px;
+  gap: 3px;
 }
 
 .capabilityFilter {
@@ -223,16 +223,20 @@
   height: 22px;
   padding: 0;
   border: 0;
+  box-shadow: none;
   border-radius: 6px;
-  background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  opacity: .68;
+  background: #ffffff18;
+  color: #c8c8cc;
+  opacity: 1;
   cursor: pointer;
 }
 
 .capabilityFilter:hover,
 .capabilityFilter:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: #606066;
+  box-shadow: none;
+  color: #f2f2f4;
+  opacity: 1;
 }
 
 .capabilityFilterActive {
@@ -240,20 +244,66 @@
   opacity: 1;
 }
 
+.capabilityFilterInclude,
+.capabilityFilterExclude {
+  box-shadow: none;
+  opacity: 1;
+}
 
+.capabilityFilterInclude {
+  background: #254432;
+  color: #69d28c;
+}
+.capabilityFilterInclude:hover,
+.capabilityFilterInclude:focus-visible {
+  background: #315b42;
+  color: #86e4a5;
+}
+.capabilityFilterExclude {
+  background: #4b292c;
+  color: #e98181;
+}
+.capabilityFilterExclude:hover,
+.capabilityFilterExclude:focus-visible {
+  background: #63363a;
+  color: #f19b9b;
+}
 .capabilityFilterUniversal {
-  color: #78aef7;
-  opacity: .78;
+  background: #ffffff08;
+  box-shadow: none;
+  color: #447f58;
+  opacity: 1;
+  cursor: default;
+}
+.capabilityFilterExcluded {
+  background: #ffffff08;
+  box-shadow: none;
+  color: #8d5555;
+  opacity: 1;
   cursor: default;
 }
 
+.capabilityFilterUniversal:hover,
+.capabilityFilterUniversal:focus-visible,
+.capabilityFilterExcluded:hover,
+.capabilityFilterExcluded:focus-visible {
+  background: #ffffff08;
+  box-shadow: none;
+}
+.capabilityFilterUniversal:hover,
+.capabilityFilterUniversal:focus-visible { color: #447f58; }
+.capabilityFilterExcluded:hover,
+.capabilityFilterExcluded:focus-visible { color: #8d5555; }
+
 .instantTooltip,
+.routeTooltip,
 .capabilityFilter,
 .capabilityFilters {
   position: relative;
 }
 
-.instantTooltip::after {
+.instantTooltip::after,
+.routeTooltip::after {
   position: absolute;
   z-index: 20;
   top: calc(100% + 5px);
@@ -275,13 +325,15 @@
 }
 
 .instantTooltip:hover::after,
-.instantTooltip:focus-visible::after {
+.instantTooltip:focus-visible::after,
+.routeTooltip:hover::after,
+.routeTooltip:focus-visible::after {
   display: block;
 }
 
-.tooltipBubble {
+.capabilityFilter::after {
   position: absolute;
-  z-index: 20;
+  z-index: 40;
   top: calc(100% + 5px);
   right: 0;
   display: none;
@@ -292,21 +344,26 @@
   background: var(--dsw-specific-tooltip, #1f1f21);
   box-shadow: 0 4px 12px #0008;
   color: var(--dsw-alias-label-primary);
+  content: attr(data-tooltip);
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   pointer-events: none;
 }
+.capabilityFilter:hover::after,
+.capabilityFilter:focus-visible::after { display: block; }
 
-.capabilityFilters:has(.capabilityFilter:hover) .tooltipBubble,
-.capabilityFilters:has(.capabilityFilter:focus-visible) .tooltipBubble {
-  display: block;
-}
-
-.instantTooltip {
+.instantTooltip,
+.routeTooltip {
   display: inline-grid;
   flex: 0 0 auto;
   place-items: center;
+}
+
+
+.routeTooltip::after {
+  left: 0;
+  transform: none;
 }
 
 .capabilitySvg {
@@ -317,13 +374,14 @@
 
 .latestIcon,
 .freeIcon {
-  font-size: 13px;
+  font-size: 17px;
   line-height: 1;
   font-weight: 600;
 }
 
 .freeIcon {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
 }
 
 

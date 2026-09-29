@@ -263,31 +263,52 @@ describe('ModelSelect reasoning effort', () => {
 })
 
 describe('ModelSelect capability filters', () => {
-  it('shows only available capabilities and combines active filters with AND', () => {
+  it('reacts to visible rows with universal, excluded, and recoverable capability states', () => {
+
+    // Latest is the default only while it preserves the currently selected row.
     const directory = createSnapshotStore(state({
-      current: { provider: 'provider', model: 'all' },
+      current: { provider: 'provider', model: 'latest-vision' },
       groups: [{
         id: 'provider', name: 'Provider', models: [
-          { id: 'all', name: 'Model 3', capabilities: { vision: true, thinking: true, tools: true }, reasoning },
-          { id: 'vision', name: 'Model 2', capabilities: { vision: true, thinking: false, tools: true } },
-          { id: 'thinking', name: 'Model 1', capabilities: { vision: false, thinking: true, tools: true }, reasoning },
+          { id: 'latest-vision', name: 'Model 3', capabilities: { vision: true, thinking: false, tools: true } },
+          { id: 'latest-thinking', name: 'Model 3 Alt', capabilities: { vision: false, thinking: true, tools: true }, reasoning },
+          { id: 'older-both', name: 'Model 2', capabilities: { vision: true, thinking: true, tools: true }, reasoning },
+          { id: 'older-plain', name: 'Model 1', capabilities: { vision: false, thinking: false, tools: true } },
         ],
       }],
     }))
     render(<ModelSelect locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Show older models.' }))
-    const vision = screen.getByRole('button', { name: 'Only show vision models.' })
-    const thinking = screen.getByRole('button', { name: 'Only show thinking models.' })
-    fireEvent.click(vision)
-    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Model 3', 'Model 2'])
-    fireEvent.click(thinking)
+    fireEvent.click(screen.getByRole('button', { name: 'Not filtering on vision' }))
     expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Model 3'])
-    expect(vision.getAttribute('aria-pressed')).toBe('true')
-    expect(thinking.getAttribute('aria-pressed')).toBe('true')
-    fireEvent.click(vision)
-    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Model 3', 'Model 1'])
+    expect(screen.getByRole('button', { name: 'Showing vision models' }).getAttribute('aria-disabled')).toBe('false')
+    const thinking = screen.getByRole('button', { name: 'No selected models can think' })
+    expect(thinking.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Showing vision models' }))
+    expect(screen.getByRole('button', { name: 'Hiding vision models' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Hiding vision models' }))
+    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual([
+      'Model 3', 'Model 3 Alt',
+    ])
+    expect(screen.getByRole('button', { name: 'Showing latest models' })).toBeTruthy()
+  })
+
+  it('shows a selected historical model instead of applying the latest default', () => {
+    const directory = createSnapshotStore(state({
+      current: { provider: 'provider', model: 'older' },
+      groups: [{ id: 'provider', name: 'Provider', models: [
+        { id: 'latest-a', name: 'Latest A Latest', capabilities: { vision: true, thinking: false, tools: true } },
+        { id: 'latest-b', name: 'Latest B Latest', capabilities: { vision: true, thinking: false, tools: true } },
+        { id: 'older', name: 'Older', capabilities: { vision: false, thinking: true, tools: true }, reasoning },
+        { id: 'older-2', name: 'Older 2', capabilities: { vision: false, thinking: true, tools: true }, reasoning },
+      ] }],
+    }))
+    render(<ModelSelect locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Latest A Latest', 'Latest B Latest', 'Older 2', 'Older'])
+    expect(screen.getByRole('button', { name: 'Not filtering on date' })).toBeTruthy()
   })
 })
 
