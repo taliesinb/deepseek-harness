@@ -50,7 +50,12 @@ describe('pi-ai gateway compatibility declarations', () => {
     expect(() => resolved(compat, 'anthropic-messages')).toThrow(/compat/)
   })
 
-  it.each(['supportsMidConvoEffort', 'allowedFallbackModels'])('withholds catalog-owned %s', (field) => {
+  it.each([
+    'supportsMidConvoEffort',
+    'supportsMidConvoSystemMessages',
+    'supportsMidConvoToolChanges',
+    'allowedFallbackModels',
+  ])('withholds catalog-owned %s', (field) => {
     expect(() => resolved({ [field]: true }, 'anthropic-messages'))
       .toThrow(/which is not configurable here/)
   })

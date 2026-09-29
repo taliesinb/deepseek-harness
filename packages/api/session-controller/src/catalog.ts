@@ -39,6 +39,13 @@ export async function buildModelCatalog(
           id: model.id,
           name: model.name,
           ...(model.description === undefined ? {} : { description: model.description }),
+          capabilities: {
+            vision: resolved.inputModalities?.includes('image') === true,
+            thinking: reasoning !== undefined,
+            // Every current Harness chat adapter accepts declared tools. This explicit
+            // catalog bit keeps the UI contract extensible if a text-only adapter arrives.
+            tools: true,
+          },
           ...(reasoning === undefined ? {} : { reasoning }),
         }
       }))

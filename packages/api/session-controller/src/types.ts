@@ -123,6 +123,12 @@ export interface ModelCatalogModel {
   readonly id: string
   readonly name: string
   readonly description?: string
+  /** Capabilities safe to expose as browser-side catalog filters. */
+  readonly capabilities: {
+    readonly vision: boolean
+    readonly thinking: boolean
+    readonly tools: boolean
+  }
   readonly reasoning?: ModelReasoning
 }
 
