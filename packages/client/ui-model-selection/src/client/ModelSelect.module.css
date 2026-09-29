@@ -241,8 +241,50 @@
 }
 
 
-.capabilityFilter:disabled {
+.capabilityFilterUniversal {
+  color: var(--dsw-alias-accent-blue);
+  opacity: .65;
   cursor: default;
+}
+
+.instantTooltip,
+.capabilityFilter {
+  position: relative;
+}
+
+.instantTooltip::after,
+.capabilityFilter::after {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  left: 50%;
+  display: none;
+  width: max-content;
+  max-width: 220px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--dsw-specific-tooltip, #1f1f21);
+  box-shadow: 0 4px 12px #0008;
+  color: var(--dsw-alias-label-primary);
+  content: attr(data-tooltip);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.instantTooltip:hover::after,
+.instantTooltip:focus-visible::after,
+.capabilityFilter:hover::after,
+.capabilityFilter:focus-visible::after {
+  display: block;
+}
+
+.instantTooltip {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
 }
 
 .capabilitySvg {
