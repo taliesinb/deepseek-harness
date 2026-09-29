@@ -441,12 +441,16 @@ export function ModelSelect(
               <div className={clsx(css.groups, 'scrollable')}>
                 {sections.map((group) => {
                   const headingId = `${id}-${group.id}-${group.sourceIndex}`
-                  const active = filters[group.name] ?? (group.latestCount > 0 ? ['latest'] : [])
+                  const active = filters[group.name] ?? []
                   const capabilities = (['free', 'latest', 'vision', 'thinking', 'tools'] as const)
                     .filter(capability => group.models.some(model => modelHasCapability(group, model, capability)))
                   const universal = capabilities.filter(capability => group.models
                     .every(model => modelHasCapability(group, model, capability)))
-                  const models = group.models.filter(model => active.every(capability => modelHasCapability(group, model, capability)))
+                  const models = group.models.filter(model => (
+                    (group.latestCount === 0 || active.includes('latest') || modelHasCapability(group, model, 'latest'))
+                    && active.filter(capability => capability !== 'latest')
+                      .every(capability => modelHasCapability(group, model, capability))
+                  ))
                   const toggle = (capability: Capability): void => {
                     setFilters(current => ({
                       ...current,
@@ -463,9 +467,9 @@ export function ModelSelect(
                       if (capability === 'tools') return 'All models support tool use.'
                       if (capability === 'free') return 'All models are free.'
                     }
-                    if (active.includes(capability)) return 'Remove filter.'
+                    if (active.includes(capability)) return capability === 'latest' ? 'Hide older models.' : 'Remove filter.'
                     const labels: Record<Capability, string> = {
-                      free: 'Only show free models.', latest: 'Only show latest models.',
+                      free: 'Only show free models.', latest: 'Show older models.',
                       vision: 'Only show vision models.', thinking: 'Only show thinking models.',
                       tools: 'Only show tool-use models.',
                     }
@@ -495,7 +499,7 @@ export function ModelSelect(
                         <div className={css.capabilityFilters} aria-label={`${group.name} capability filters`}>
                           <div className={css.tooltipBubble} data-filter-tooltip />
                           {capabilities.includes('free') && <button type="button" {...filterProps('free')}><span className={css.freeIcon} aria-hidden="true">$</span></button>}
-                          {capabilities.includes('latest') && <button type="button" {...filterProps('latest')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.25 9.2 5l3.55-1.75L11 6.8 14.75 8 11 9.2l1.75 3.55L9.2 11 8 14.75 6.8 11l-3.55 1.75L5 9.2 1.25 8 5 6.8 3.25 3.25 6.8 5 8 1.25Z" fill="currentColor" /></svg></button>}
+                          {capabilities.includes('latest') && <button type="button" {...filterProps('latest')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.35" /><path d="M8 4.5V8l2.6 1.6" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg></button>}
                           {capabilities.includes('vision') && <button type="button" {...filterProps('vision')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M1.2 8s2.5-4 6.8-4 6.8 4 6.8 4-2.5 4-6.8 4-6.8-4-6.8-4Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="8" cy="8" r="2" fill="currentColor" /></svg></button>}
                           {capabilities.includes('thinking') && <button type="button" {...filterProps('thinking')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 9.2c-.8-.7-1.3-1.7-1.3-2.8A3.8 3.8 0 0 1 8 2.6a3.8 3.8 0 0 1 3.8 3.8c0 1.2-.5 2.2-1.4 2.9-.5.4-.7.8-.8 1.2H6.3c-.1-.5-.3-.9-.8-1.3Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="M5.8 12h4.4M6.3 14h3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg></button>}
                           {capabilities.includes('tools') && <button type="button" {...filterProps('tools')}><IconApiOutline14 size={14} /></button>}

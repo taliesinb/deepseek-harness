@@ -277,7 +277,7 @@ describe('ModelSelect capability filters', () => {
     render(<ModelSelect locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Remove filter.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show older models.' }))
     const vision = screen.getByRole('button', { name: 'Only show vision models.' })
     const thinking = screen.getByRole('button', { name: 'Only show thinking models.' })
     fireEvent.click(vision)
