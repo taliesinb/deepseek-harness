@@ -804,7 +804,7 @@ function resolveModelCompat(
 }
 
 const ANTHROPIC_LATEST_SUFFIX = ' (latest)'
-const ANTHROPIC_FAMILIES = ['fable', 'haiku', 'opus', 'sonnet'] as const
+const ANTHROPIC_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'] as const
 
 interface AnthropicVersionedModel {
   model: Model<Api>
@@ -831,14 +831,16 @@ function compareVersion(left: readonly number[], right: readonly number[]): numb
 
 /** Apply DSH's Anthropic display policy to any route backed by that catalog. */
 function normalizeAnthropicModels(models: readonly Model<Api>[]): Model<Api>[] {
-  const parsed = models.map(anthropicVersion).filter((value): value is AnthropicVersionedModel => value !== undefined)
+  const aliases = models.filter(model => anthropicVersion(model) !== undefined)
   const latest = new Map<string, string>()
-  for (const candidate of parsed) {
-    const currentId = latest.get(candidate.family)
-    const current = parsed.find(value => value.model.id === currentId)
-    if (current === undefined || compareVersion(candidate.version, current.version) > 0) latest.set(candidate.family, candidate.model.id)
+  for (const model of aliases) {
+    const candidate = anthropicVersion(model)
+    if (candidate === undefined) continue
+    const current = aliases.map(anthropicVersion)
+      .find(value => value?.model.id === latest.get(candidate.family))
+    if (current === undefined || compareVersion(candidate.version, current.version) > 0) latest.set(candidate.family, model.id)
   }
-  const normalized = models.map((model) => {
+  const normalized = aliases.map((model) => {
     const name = model.name.endsWith(ANTHROPIC_LATEST_SUFFIX)
       ? model.name.slice(0, -ANTHROPIC_LATEST_SUFFIX.length)
       : model.name
@@ -850,7 +852,12 @@ function normalizeAnthropicModels(models: readonly Model<Api>[]): Model<Api>[] {
     const leftLatest = left.name.endsWith(ANTHROPIC_LATEST_SUFFIX)
     const rightLatest = right.name.endsWith(ANTHROPIC_LATEST_SUFFIX)
     if (leftLatest !== rightLatest) return leftLatest ? -1 : 1
-    return 0
+    const leftModel = anthropicVersion(left)
+    const rightModel = anthropicVersion(right)
+    if (leftModel === undefined || rightModel === undefined) return 0
+    const familyOrder = ANTHROPIC_FAMILIES.indexOf(leftModel.family) - ANTHROPIC_FAMILIES.indexOf(rightModel.family)
+    if (familyOrder !== 0) return familyOrder
+    return compareVersion(rightModel.version, leftModel.version)
   })
 }
 

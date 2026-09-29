@@ -188,6 +188,27 @@
   font-weight: 500;
 }
 
+
+.anthropicGroup .groupTitle {
+  padding: 4px 8px 3px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 700;
+}
+
+.anthropicGroup .option {
+  min-height: 26px;
+  padding: 2px 8px;
+  border-radius: 7px;
+}
+
+.anthropicGroup .modelName {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
 .option {
   box-sizing: border-box;
   display: flex;

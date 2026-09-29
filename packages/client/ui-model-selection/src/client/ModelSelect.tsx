@@ -411,8 +411,9 @@ export function ModelSelect(
               <div className={clsx(css.groups, 'scrollable')}>
                 {state.groups.map((group) => {
                   const headingId = `${id}-${group.id}`
+                  const anthropic = group.name.toLocaleLowerCase().startsWith('anthropic')
                   return (
-                    <section role="group" aria-labelledby={headingId} className={css.group} key={group.id}>
+                    <section role="group" aria-labelledby={headingId} className={clsx(css.group, anthropic && css.anthropicGroup)} key={group.id}>
                       <div className={css.groupTitle} id={headingId}>{group.name}</div>
                       {group.models.map((model) => {
                         const selected = state.current?.provider === group.id && state.current.model === model.id
@@ -429,7 +430,7 @@ export function ModelSelect(
                             onClick={() => { choose({ provider: group.id, model: model.id }) }}
                           >
                             <span className={css.optionCopy}>
-                              <span className={css.modelName}>{model.name}</span>
+                              <span className={css.modelName}>{anthropic ? model.name.replace(/^Claude /u, '') : model.name}</span>
                             </span>
                             <span className={css.check}>
                               {selected ? <IconCheckOutline16 /> : null}

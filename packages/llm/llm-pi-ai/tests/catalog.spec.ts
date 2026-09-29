@@ -47,12 +47,23 @@ describe('Anthropic catalog display policy', () => {
     const latest = models.filter(model => model.name.endsWith(' (latest)'))
     expect(latest.map(model => model.id)).toEqual([
       'claude-fable-5-1',
-      'claude-haiku-4-5',
       'claude-opus-5-5',
       'claude-sonnet-5',
+      'claude-haiku-4-5',
     ])
     expect(models.find(model => model.id === 'claude-opus-4-5')?.name).toBe('Claude Opus 4.5')
+    expect(models.some(model => model.id === 'claude-opus-4-5-20251101')).toBe(false)
     expect(models.slice(0, latest.length).every(model => model.name.endsWith(' (latest)'))).toBe(true)
+    expect(models.slice(latest.length).map(model => model.id)).toEqual([
+      'claude-fable-5',
+      'claude-opus-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-opus-4-5',
+      'claude-sonnet-4-6',
+      'claude-sonnet-4-5',
+    ])
   })
 
   it('applies by Anthropic catalog identity rather than requiring the route key', () => {
