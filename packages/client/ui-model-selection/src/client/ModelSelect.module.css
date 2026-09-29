@@ -242,18 +242,18 @@
 
 
 .capabilityFilterUniversal {
-  color: var(--dsw-alias-accent-blue);
-  opacity: .65;
+  color: #78aef7;
+  opacity: .78;
   cursor: default;
 }
 
 .instantTooltip,
-.capabilityFilter {
+.capabilityFilter,
+.capabilityFilters {
   position: relative;
 }
 
-.instantTooltip::after,
-.capabilityFilter::after {
+.instantTooltip::after {
   position: absolute;
   z-index: 20;
   top: calc(100% + 5px);
@@ -275,9 +275,31 @@
 }
 
 .instantTooltip:hover::after,
-.instantTooltip:focus-visible::after,
-.capabilityFilter:hover::after,
-.capabilityFilter:focus-visible::after {
+.instantTooltip:focus-visible::after {
+  display: block;
+}
+
+.tooltipBubble {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  display: none;
+  width: max-content;
+  max-width: 220px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--dsw-specific-tooltip, #1f1f21);
+  box-shadow: 0 4px 12px #0008;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.capabilityFilters:has(.capabilityFilter:hover) .tooltipBubble,
+.capabilityFilters:has(.capabilityFilter:focus-visible) .tooltipBubble {
   display: block;
 }
 
@@ -407,7 +429,11 @@
 }
 
 .cellValue {
+  display: flex;
   flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

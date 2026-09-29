@@ -408,7 +408,7 @@ export function ModelSelect(
             <>
               <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { drill('model') }}>
                 <span className={css.cellLabel}>{t('menu.model')}</span>
-                <span className={css.cellValue}>{modelLabel}</span>
+                <span className={css.cellValue}><RouteIcon route={currentRoute} className={css.routeIcon} /><span>{modelLabel}</span></span>
                 <IconChevronRightOutline14 className={css.cellChevron} />
               </button>
               {reasoning !== undefined && (
@@ -481,6 +481,10 @@ export function ModelSelect(
                     'aria-pressed': active.includes(capability),
                     'aria-disabled': universal.includes(capability),
                     'data-tooltip': tooltip(capability),
+                    onMouseEnter: (event: React.MouseEvent<HTMLButtonElement>) => {
+                      const bubble = event.currentTarget.parentElement?.querySelector<HTMLElement>('[data-filter-tooltip]')
+                      if (bubble !== undefined && bubble !== null) bubble.textContent = tooltip(capability)
+                    },
                     onMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => { event.preventDefault() },
                     onClick: () => { if (!universal.includes(capability)) toggle(capability) },
                   })
@@ -489,6 +493,7 @@ export function ModelSelect(
                       <div className={css.groupHeader}>
                         <div className={css.groupTitle} id={headingId}><span className={css.instantTooltip} data-tooltip={routeLabel(providerRoute(group))}><RouteIcon route={providerRoute(group)} className={css.routeIcon} /></span><span>{group.name.replace(/: (?:OAuth|API|OpenRouter)$/u, '')}</span></div>
                         <div className={css.capabilityFilters} aria-label={`${group.name} capability filters`}>
+                          <div className={css.tooltipBubble} data-filter-tooltip />
                           {capabilities.includes('free') && <button type="button" {...filterProps('free')}><span className={css.freeIcon} aria-hidden="true">$</span></button>}
                           {capabilities.includes('latest') && <button type="button" {...filterProps('latest')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.25 9.2 5l3.55-1.75L11 6.8 14.75 8 11 9.2l1.75 3.55L9.2 11 8 14.75 6.8 11l-3.55 1.75L5 9.2 1.25 8 5 6.8 3.25 3.25 6.8 5 8 1.25Z" fill="currentColor" /></svg></button>}
                           {capabilities.includes('vision') && <button type="button" {...filterProps('vision')}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M1.2 8s2.5-4 6.8-4 6.8 4 6.8 4-2.5 4-6.8 4-6.8-4-6.8-4Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="8" cy="8" r="2" fill="currentColor" /></svg></button>}
