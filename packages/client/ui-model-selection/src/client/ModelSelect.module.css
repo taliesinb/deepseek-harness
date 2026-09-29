@@ -69,6 +69,14 @@
   flex: 0 0 auto;
 }
 
+
+.routeIcon {
+  display: block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
 /* Icon-only floor: past continuous shrink (effort ellipsizes away first, then
    the name), a 360px composer row leaves the 45cqw cap too little for a
    legible name, so the text yields to the Models glyph. Same anonymous
@@ -173,40 +181,98 @@
 }
 
 .group + .group {
-  margin-top: 4px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l3) 45%, transparent);
 }
 
-.groupTitle {
+.groupHeader {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 5px 8px 3px;
+  display: flex;
+  align-items: center;
+  min-height: 29px;
+  padding: 4px 2px 5px 8px;
   background: var(--dsw-specific-menu);
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 500;
 }
 
-
-.anthropicGroup .groupTitle {
-  padding: 4px 8px 3px;
-  color: var(--dsw-alias-label-primary);
+.groupTitle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--dsw-alias-label-tertiary);
   font-size: 14px;
   line-height: 18px;
-  font-weight: 700;
-}
-
-.anthropicGroup .option {
-  min-height: 26px;
-  padding: 2px 8px;
-  border-radius: 7px;
-}
-
-.anthropicGroup .modelName {
-  font-size: 12px;
-  line-height: 18px;
   font-weight: 500;
+}
+
+.capabilityFilters {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+
+.capabilityFilter {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: .68;
+  cursor: pointer;
+}
+
+.capabilityFilter:hover,
+.capabilityFilter:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.capabilityFilterActive {
+  color: var(--dsw-alias-label-primary);
+  opacity: 1;
+}
+
+
+.capabilityFilter:disabled {
+  cursor: default;
+}
+
+.capabilitySvg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.latestIcon,
+.freeIcon {
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.freeIcon {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+
+.latestDivider {
+  height: 1px;
+  margin: 4px 8px;
+  background: color-mix(in srgb, var(--dsw-alias-border-l3) 45%, transparent);
+}
+
+.filteredEmpty {
+  padding: 5px 8px 8px;
+  color: var(--dsw-alias-label-dimmed);
+  font-size: 12px;
 }
 
 .option {
@@ -216,8 +282,8 @@
   gap: 8px;
   width: auto;
   min-width: 100%;
-  min-height: 38px;
-  padding: 6px 8px;
+  min-height: 30px;
+  padding: 4px 8px;
   border: none;
   border-radius: 10px;
   outline: none;
@@ -253,8 +319,8 @@
 .modelName {
   overflow: hidden;
   color: inherit;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;

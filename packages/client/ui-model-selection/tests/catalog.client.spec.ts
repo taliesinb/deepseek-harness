@@ -6,7 +6,7 @@ import { ModelCatalogDirectory } from '../src/client/catalog.ts'
 const catalog = (model: string): ModelCatalog => ({
   default: { provider: 'fixture', model },
   routableProviders: ['fixture'],
-  groups: [{ id: 'fixture', name: 'Fixture', models: [{ id: model, name: model }] }],
+  groups: [{ id: 'fixture', name: 'Fixture', models: [{ id: model, name: model, capabilities: { vision: false, thinking: false, tools: true } }] }],
   failures: [],
 })
 

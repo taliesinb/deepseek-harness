@@ -365,11 +365,12 @@ describe('Web session model selection', () => {
       id: 'deepseek-official',
       name: 'DeepSeek',
       models: [
-        { id: 'deepseek-chat', name: 'DeepSeek Chat', reasoning: REASONING },
+        { id: 'deepseek-chat', name: 'DeepSeek Chat', capabilities: { vision: false, thinking: true, tools: true }, reasoning: REASONING },
         {
           id: 'deepseek-reasoner',
           name: 'DeepSeek Reasoner',
           description: 'Reasoning model',
+          capabilities: { vision: false, thinking: true, tools: true },
           reasoning: REASONING,
         },
       ],
@@ -409,13 +410,14 @@ describe('Web session model selection', () => {
 
     const catalog = await buildModelCatalog(ctx)
     expect(catalog.groups).toEqual(expect.arrayContaining([
-      { id: 'plain', name: 'Plain', models: [{ id: 'plain-model', name: 'Plain Model' }] },
+      { id: 'plain', name: 'Plain', models: [{ id: 'plain-model', name: 'Plain Model', capabilities: { vision: false, thinking: false, tools: true } }] },
       {
         id: 'described-reasoning',
         name: 'Described Reasoning',
         models: [{
           id: 'reasoning-model',
           name: 'Reasoning Model',
+          capabilities: { vision: false, thinking: true, tools: true },
           reasoning: {
             efforts: [{ id: 'high', name: 'High', description: 'More thinking' }],
           },

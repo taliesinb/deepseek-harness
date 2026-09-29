@@ -62,7 +62,7 @@ function modelsApi(options: {
   groups?: readonly {
     id: string
     name: string
-    models: readonly { id: string; name: string }[]
+    models: readonly { id: string; name: string; capabilities?: { vision: boolean; thinking: boolean; tools: boolean } }[]
   }[]
   failures?: readonly { id: string; name: string; message: string }[]
   error?: string
@@ -434,7 +434,7 @@ describe('AgentLoopCardController', () => {
 describe('SubagentModelSelectionCardController', () => {
   it('joins stored routes with the live catalog without dropping unavailable choices', () => {
     const candidates = subagentModelCandidates(
-      [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
       [{ provider: 'legacy', model: 'old' }],
       new Set(['legacy\0old']),
     )
@@ -455,7 +455,7 @@ describe('SubagentModelSelectionCardController', () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     acceptWrites(host)
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     const controller = new SubagentModelSelectionCardController(host.scope, models.ctx)
     host.publish({
@@ -502,7 +502,7 @@ describe('SubagentModelSelectionCardController', () => {
   it('keeps the Host value and reports a rejected write', async () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     const controller = new SubagentModelSelectionCardController(host.scope, models.ctx)
     host.publish({ status: 'ready', writable: true, value: { enabled: false, allowedModels: [] }, user: {} })
@@ -528,7 +528,7 @@ describe('SubagentModelSelectionCardController', () => {
   it('loads stored routes, stages removal and disablement, and discards both', async () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
       failures: [{ id: 'beta', name: 'Beta', message: 'offline' }],
     })
     const controller = new SubagentModelSelectionCardController(host.scope, models.ctx)
@@ -562,7 +562,7 @@ describe('SubagentModelSelectionCardController', () => {
       value: { enabled: true, allowedModels: [{ provider: 'alpha', model: 'fast' }] }, user: {},
     })
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     const controller = new SubagentModelSelectionCardController(host.scope, models.ctx)
     const face = controller.inject()
@@ -598,7 +598,7 @@ describe('SubagentModelSelectionCardController', () => {
   it('rejects a draft after the Host revision changes', async () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     const controller = new SubagentModelSelectionCardController(host.scope, models.ctx)
     host.publish({
@@ -632,7 +632,7 @@ describe('SubagentModelSelectionCardController', () => {
   it('settles a draft when a newer Host revision already contains it', async () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     const controller = new SubagentModelSelectionCardController(host.scope, models.ctx)
     host.publish({
@@ -665,7 +665,7 @@ describe('SubagentModelSelectionCardController', () => {
     const models = vi.fn()
       .mockResolvedValueOnce({
         ok: true, value: {
-          groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast' }] }],
+          groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
           failures: [],
         },
       })
@@ -704,7 +704,7 @@ describe('SubagentModelSelectionCardController', () => {
   it('drops a draft when the connection generation changes', async () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const models = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     host.publish({
       status: 'ready', writable: true, revision: 4,
@@ -739,7 +739,7 @@ describe('SubagentModelSelectionCardController', () => {
     const models = vi.fn()
       .mockResolvedValueOnce({
         ok: true, value: {
-          groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast' }] }],
+          groups: [{ id: 'alpha', name: 'Alpha', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
           failures: [],
         },
       })
@@ -764,7 +764,7 @@ describe('SubagentModelSelectionCardController', () => {
   it('suppresses duplicate actions and late save settlements', async () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const catalog = modelsApi({
-      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast', capabilities: { vision: false, thinking: false, tools: true } }] }],
     })
     const write = deferred<undefined>()
     const mutate = vi.fn(async (ops: readonly SettingsPathOpView[]) => {

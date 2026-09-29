@@ -40,8 +40,9 @@ function state(overrides: Partial<ModelDirectoryState> = {}): ModelDirectoryStat
       name: 'DeepSeek',
       models: [{
         id: 'deepseek-v4-flash',
-        name: 'DeepSeek-V4-Flash',
+        name: 'DeepSeek 4 Flash',
         description: 'Fast catalog description',
+        capabilities: { vision: true, thinking: true, tools: true },
         reasoning,
       }],
     }],
@@ -71,7 +72,7 @@ describe('ModelSelect reasoning effort', () => {
     />)
 
     const trigger = screen.getByRole('button', {
-      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
+      name: '选择模型，当前 DeepSeek 4 Flash，推理等级 High',
     })
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
@@ -86,7 +87,7 @@ describe('ModelSelect reasoning effort', () => {
         model: 'deepseek-v4-flash',
         reasoningEffort: 'max',
       })
-      expect(trigger.getAttribute('aria-label')).toBe('选择模型，当前 DeepSeek-V4-Flash，推理等级 Max')
+      expect(trigger.getAttribute('aria-label')).toBe('选择模型，当前 DeepSeek 4 Flash，推理等级 Max')
     })
   })
 
@@ -98,6 +99,7 @@ describe('ModelSelect reasoning effort', () => {
         models: [{
           id: 'model',
           name: 'Model',
+          capabilities: { vision: false, thinking: true, tools: true },
           reasoning: { efforts: [{ id: 'standard', name: 'Standard' }] },
         }],
       }],
@@ -140,7 +142,7 @@ describe('ModelSelect reasoning effort', () => {
     expect(screen.queryByRole('menuitem', { name: /推理等级/ })).toBeNull()
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
     expect(screen.queryByRole('menuitemradio', { name: 'removed-model' })).toBeNull()
-    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek 4 Flash' })).toBeTruthy()
     expect(screen.queryByText('Fast catalog description')).toBeNull()
   })
 
@@ -165,7 +167,7 @@ describe('ModelSelect reasoning effort', () => {
     directory.set(state())
     await waitFor(() => {
       expect(screen.getByRole('button', {
-        name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
+        name: '选择模型，当前 DeepSeek 4 Flash，推理等级 High',
       })).toBeTruthy()
     })
   })
@@ -175,8 +177,8 @@ describe('ModelSelect reasoning effort', () => {
       id: 'deepseek-official',
       name: 'DeepSeek',
       models: [
-        { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', reasoning },
-        { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+        { id: 'deepseek-v4-flash', name: 'DeepSeek 4 Flash', capabilities: { vision: true, thinking: true, tools: true }, reasoning },
+        { id: 'deepseek-v4-pro', name: 'DeepSeek 4 Pro', capabilities: { vision: false, thinking: false, tools: true } },
       ],
     }]
     const directory = createSnapshotStore<ModelDirectoryState>(state({ groups }))
@@ -198,7 +200,7 @@ describe('ModelSelect reasoning effort', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /DeepSeek 4 Pro/ }))
     const toast = await screen.findByRole('alert')
     expect(toast.textContent).toBe(sessionInUse
       ? zh['error.sessionInUse']
@@ -257,6 +259,35 @@ describe('ModelSelect reasoning effort', () => {
 
     expect(screen.queryByRole('button')).toBeNull()
     expect(load).not.toHaveBeenCalled()
+  })
+})
+
+describe('ModelSelect capability filters', () => {
+  it('shows only available capabilities and combines active filters with AND', () => {
+    const directory = createSnapshotStore(state({
+      current: { provider: 'provider', model: 'all' },
+      groups: [{
+        id: 'provider', name: 'Provider', models: [
+          { id: 'all', name: 'Model 3', capabilities: { vision: true, thinking: true, tools: true }, reasoning },
+          { id: 'vision', name: 'Model 2', capabilities: { vision: true, thinking: false, tools: true } },
+          { id: 'thinking', name: 'Model 1', capabilities: { vision: false, thinking: true, tools: true }, reasoning },
+        ],
+      }],
+    }))
+    render(<ModelSelect locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Filter to latest-generation models' }))
+    const vision = screen.getByRole('button', { name: 'Filter to models that read images' })
+    const thinking = screen.getByRole('button', { name: 'Filter to thinking models' })
+    fireEvent.click(vision)
+    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Model 3', 'Model 2'])
+    fireEvent.click(thinking)
+    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Model 3'])
+    expect(vision.getAttribute('aria-pressed')).toBe('true')
+    expect(thinking.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(vision)
+    expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['Model 3', 'Model 1'])
   })
 })
 

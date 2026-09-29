@@ -26,11 +26,12 @@ import clsx from 'clsx'
 import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
-  IconDataOutline16, IconWarningOutline16, Toast,
+  IconApiOutline14, IconDataOutline16, IconWarningOutline16, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelSelectInjected } from './slots.ts'
 import css from './ModelSelect.module.css'
+import { modelHasCapability, providerRoute, providerSections, type Capability, type ProviderRoute } from './provider-sections.ts'
 
 /** Which pane the dropdown shows: the two-row root or one drilled-in list. */
 type Pane = 'root' | 'model' | 'effort'
@@ -44,6 +45,14 @@ interface EffortChoice {
 
 /** Unplaced portal card: hidden but laid out at a fixed origin so offsetWidth/offsetHeight are real (Menu primitive's measure pass). */
 const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
+
+
+function RouteIcon({ route, className }: { route: ProviderRoute; className: string | undefined }) {
+  if (route === 'local') return <IconDataOutline16 className={className} size={16} />
+  if (route === 'oauth') return <svg className={className} viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8 17 4.4v4.7c0 4.2-2.7 7.3-7 9.1-4.3-1.8-7-4.9-7-9.1V4.4l7-2.6Z" fill="none" stroke="currentColor" strokeWidth="1.55" /><circle cx="10" cy="7.2" r="2" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M6.8 13.5c.5-2.1 1.6-3.2 3.2-3.2s2.8 1.1 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+  if (route === 'openrouter') return <svg className={className} viewBox="0 0 20 20" aria-hidden="true"><path d="M2 10h4M6 10c2.5 0 3-4 5.5-4H17M6 10c2.5 0 3 4 5.5 4H17M14.5 3.5 17 6l-2.5 2.5M14.5 11.5 17 14l-2.5 2.5" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  return <svg className={className} viewBox="0 0 20 20" aria-hidden="true"><rect x="1.8" y="3" width="16.4" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="m7 7-3 3 3 3m6-6 3 3-3 3m-2.2-7.2-1.6 8.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+}
 
 /**
  * Render the composer model seat.
@@ -60,6 +69,8 @@ export function ModelSelect(
     () => directory.getSnapshot(),
   )
   const [open, setOpen] = useState(false)
+  const [filters, setFilters] = useState<Readonly<Record<string, readonly Capability[]>>>({})
+  const sections = useMemo(() => providerSections(state.groups), [state.groups])
   const [pane, setPane] = useState<Pane>('root')
   // The in-menu error strip serves catalog loads (its Retry re-runs the
   // load); a rejected SELECTION announces through the transient toast
@@ -75,7 +86,7 @@ export function ModelSelect(
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
 
-  const choices = useMemo(() => state.groups.flatMap(group =>
+  const choices = useMemo(() => sections.flatMap(group =>
     group.models.map(model => ({
       group,
       model,
@@ -86,7 +97,7 @@ export function ModelSelect(
           ? {}
           : { reasoningEffort: model.reasoning.defaultEffort },
       } satisfies ModelSelection,
-    }))), [state.groups])
+    }))), [sections])
   const selectedIndex = state.current === null
     ? -1
     : choices.findIndex(c => c.selection.provider === state.current?.provider && c.selection.model === state.current.model)
@@ -152,6 +163,15 @@ export function ModelSelect(
     const cell = itemRefs.current[intent === 'effort' ? 1 : 0]
     ;(cell !== null && cell !== undefined && !cell.disabled ? cell : triggerRef.current)?.focus()
   }, [open, pane])
+
+
+  // Entering the model pane keeps the current selection visible and centers it
+  // when the scroll range permits, making nearby choices in its provider easy to reach.
+  useLayoutEffect(() => {
+    if (!open || pane !== 'model') return
+    const selected = menuRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
+    if (typeof selected?.scrollIntoView === 'function') selected.scrollIntoView({ block: 'center' })
+  }, [open, pane, sections])
 
   // Portaled placement (the Menu primitive's portal rules: fixed from the
   // anchor rect, measured before paint, clamped inside the viewport): above
@@ -355,7 +375,7 @@ export function ModelSelect(
           }
         }}
       >
-        <IconDataOutline16 className={css.triggerIcon} size={16} />
+        <RouteIcon route={currentChoice === undefined ? 'local' : providerRoute(currentChoice.group)} className={css.routeIcon} />
         <span className={css.triggerLabel}>{modelLabel}</span>
         {effortLabel !== undefined && <span className={css.triggerEffort}>{effortLabel}</span>}
         <IconChevronDownOutline14 className={clsx(css.chevron, open && css.chevronOpen)} />
@@ -409,35 +429,49 @@ export function ModelSelect(
                 </div>
               ))}
               <div className={clsx(css.groups, 'scrollable')}>
-                {state.groups.map((group) => {
-                  const headingId = `${id}-${group.id}`
-                  const anthropic = group.name.toLocaleLowerCase().startsWith('anthropic')
+                {sections.map((group) => {
+                  const headingId = `${id}-${group.id}-${group.sourceIndex}`
+                  const active = filters[group.name] ?? (group.latestCount > 0 ? ['latest'] : [])
+                  const capabilities = (['free', 'latest', 'vision', 'thinking', 'tools'] as const)
+                    .filter(capability => group.models.some(model => modelHasCapability(group, model, capability)))
+                  const universal = capabilities.filter(capability => group.models
+                    .every(model => modelHasCapability(group, model, capability)))
+                  const models = group.models.filter(model => active.every(capability => modelHasCapability(group, model, capability)))
+                  const toggle = (capability: Capability): void => {
+                    setFilters(current => ({
+                      ...current,
+                      [group.name]: active.includes(capability)
+                        ? active.filter(value => value !== capability)
+                        : [...active, capability],
+                    }))
+                  }
                   return (
-                    <section role="group" aria-labelledby={headingId} className={clsx(css.group, anthropic && css.anthropicGroup)} key={group.id}>
-                      <div className={css.groupTitle} id={headingId}>{anthropic && group.name === 'anthropic' ? 'Anthropic' : group.name}</div>
-                      {group.models.map((model) => {
+                    <section role="group" aria-labelledby={headingId} className={css.group} key={`${group.name}-${group.sourceIndex}`}>
+                      <div className={css.groupHeader}>
+                        <div className={css.groupTitle} id={headingId}><RouteIcon route={providerRoute(group)} className={css.routeIcon} /><span>{group.name.replace(/: (?:OAuth|API|OpenRouter)$/u, '')}</span></div>
+                        <div className={css.capabilityFilters} aria-label={`${group.name} capability filters`}>
+                          {capabilities.includes('free') && <button type="button" className={clsx(css.capabilityFilter, (active.includes('free') || universal.includes('free')) && css.capabilityFilterActive)} aria-pressed={active.includes('free')} disabled={universal.includes('free')} title="Filter to free models" onMouseDown={(event) => { event.preventDefault() }} onClick={() => { toggle('free') }}><span className={css.freeIcon} aria-hidden="true">$</span></button>}
+                          {capabilities.includes('latest') && <button type="button" className={clsx(css.capabilityFilter, active.includes('latest') && css.capabilityFilterActive)} aria-pressed={active.includes('latest')} title="Filter to latest-generation models" onMouseDown={(event) => { event.preventDefault() }} onClick={() => { toggle('latest') }}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.25 9.2 5l3.55-1.75L11 6.8 14.75 8 11 9.2l1.75 3.55L9.2 11 8 14.75 6.8 11l-3.55 1.75L5 9.2 1.25 8 5 6.8 3.25 3.25 6.8 5 8 1.25Z" fill="currentColor" /></svg></button>}
+                          {capabilities.includes('vision') && <button type="button" className={clsx(css.capabilityFilter, (active.includes('vision') || universal.includes('vision')) && css.capabilityFilterActive)} aria-pressed={active.includes('vision')} disabled={universal.includes('vision')} title="Filter to models that read images" onMouseDown={(event) => { event.preventDefault() }} onClick={() => { toggle('vision') }}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M1.2 8s2.5-4 6.8-4 6.8 4 6.8 4-2.5 4-6.8 4-6.8-4-6.8-4Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="8" cy="8" r="2" fill="currentColor" /></svg></button>}
+                          {capabilities.includes('thinking') && <button type="button" className={clsx(css.capabilityFilter, (active.includes('thinking') || universal.includes('thinking')) && css.capabilityFilterActive)} aria-pressed={active.includes('thinking')} disabled={universal.includes('thinking')} title="Filter to thinking models" onMouseDown={(event) => { event.preventDefault() }} onClick={() => { toggle('thinking') }}><svg className={css.capabilitySvg} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 10.1c-1-0.8-1.7-2-1.7-3.4A4.5 4.5 0 0 1 8 2.2a4.5 4.5 0 0 1 4.5 4.5c0 1.4-.7 2.7-1.8 3.5-.5.4-.7.8-.8 1.3H6c-.1-.5-.3-1-.8-1.4Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="M6.2 13h3.6M6.8 14.5h2.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg></button>}
+                          {capabilities.includes('tools') && <button type="button" className={clsx(css.capabilityFilter, (active.includes('tools') || universal.includes('tools')) && css.capabilityFilterActive)} aria-pressed={active.includes('tools')} disabled={universal.includes('tools')} title="Filter to models with tool use" onMouseDown={(event) => { event.preventDefault() }} onClick={() => { toggle('tools') }}><IconApiOutline14 size={14} /></button>}
+                        </div>
+                      </div>
+                      {models.map((model, modelIndex) => {
                         const selected = state.current?.provider === group.id && state.current.model === model.id
                         return (
-                          <button
-                            ref={itemRef()}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={selected}
-                            className={clsx(css.option, selected && css.selected)}
-                            key={model.id}
-                            title={model.name}
-                            disabled={busy}
-                            onClick={() => { choose({ provider: group.id, model: model.id }) }}
-                          >
-                            <span className={css.optionCopy}>
-                              <span className={css.modelName}>{anthropic ? model.name.replace(/^Claude /u, '') : model.name}</span>
-                            </span>
-                            <span className={css.check}>
-                              {selected ? <IconCheckOutline16 /> : null}
-                            </span>
-                          </button>
+                          <div key={model.id}>
+                            {group.latestCount > 0 && modelIndex === group.latestCount && <div className={css.latestDivider} />}
+                            {modelIndex > group.latestCount && model.name.endsWith(' Free') && !models[modelIndex - 1]?.name.endsWith(' Free') && <div className={css.latestDivider} />}
+                            {modelIndex > group.latestCount && /Router|^Auto$/u.test(model.name) && !/Router|^Auto$/u.test(models[modelIndex - 1]?.name ?? '') && <div className={css.latestDivider} />}
+                            <button ref={itemRef()} type="button" role="menuitemradio" aria-checked={selected} className={clsx(css.option, selected && css.selected)} title={model.name} disabled={busy} onClick={() => { choose({ provider: group.id, model: model.id }) }}>
+                              <span className={css.optionCopy}><span className={css.modelName}>{group.name.startsWith('Anthropic:') ? model.name.replace(/^Claude /u, '') : model.name}</span></span>
+                              <span className={css.check}>{selected ? <IconCheckOutline16 /> : null}</span>
+                            </button>
+                          </div>
                         )
                       })}
+                      {models.length === 0 && <div className={css.filteredEmpty}>No models match these capabilities.</div>}
                     </section>
                   )
                 })}
