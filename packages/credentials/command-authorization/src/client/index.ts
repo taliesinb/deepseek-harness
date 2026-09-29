@@ -1,1 +1,1 @@
-export * from './index.tsx'
+export { apply, inject } from './command-card.tsx'
