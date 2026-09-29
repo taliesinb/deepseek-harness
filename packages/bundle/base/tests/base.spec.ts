@@ -32,6 +32,12 @@ describe('dsh-base bundle', () => {
     )
     expect(rows.length).toBeGreaterThan(50)
     expect(rows.some(row => row.id === 'agent-loop')).toBe(true)
+    expect(rows.find(row => row.id === 'authorization')).toMatchObject({
+      name: '@deepseek-ai/dsh-authorization',
+    })
+    expect(rows.find(row => row.id === 'command-authorization')).toMatchObject({
+      name: '@deepseek-ai/dsh-command-authorization',
+    })
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.disabled).toBeUndefined()
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.config?.['mode']).toEqual({
       __jsExpr: "process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'",
@@ -47,6 +53,8 @@ describe('dsh-base bundle', () => {
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-codex')
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-claude-code')
     expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-web-fetch-http')
+    expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-authorization')
+    expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-command-authorization')
   })
 
   it('gates each shell stack by platform with a symmetric disabled expression', () => {

@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-每个基于 base 的 `dsh --profile` 表层都运行在 `dsh-base` 上，因此这些表层共享模型连接、完整工具集、持久会话历史和 workspace 安全默认值。随附的 `sdk-minimal` profile 刻意改用完整的独立配置树。你通常不直接操作本组合包——随发行版交付的基于 base 的 profile 已经包含它，自定义的基于 base 的 profile 则把它放在第一位。需要其他默认值时，应修改自己的 profile patch 或添加后续组合包；本包不是供导入的库。
+每个基于 base 的 `dsh --profile` 表层都运行在 `dsh-base` 上，因此这些表层共享模型连接、提供商授权、完整工具集、持久会话历史和 workspace 安全默认值。随附的 `sdk-minimal` profile 刻意改用完整的独立配置树。你通常不直接操作本组合包——随发行版交付的基于 base 的 profile 已经包含它，自定义的基于 base 的 profile 则把它放在第一位。需要其他默认值时，应修改自己的 profile patch 或添加后续组合包；本包不是供导入的库。
 
 ## 目录
 
@@ -26,6 +26,8 @@ kind: "package-bundle"
 ## 使用本包
 
 你会自动获得 dsh 核心：随发行版交付的 `web`、`headless`、`sdk` 与 `acp` profile 已包含它，自定义 profile 则把它列为第一个组合包。之后一切无需任何额外配置即可工作。
+
+在 Web 对话中，`/oauth list` 显示提供商登录流程，`/oauth llm-pi-ai/anthropic oauth` 启动 Claude Pro/Max 授权。此手动命令会在命令卡片中返回授权 URL，同时 Host 等待回调；过程和限制见 [dsh-command-authorization](../../credentials/command-authorization/README.zh.md)。
 
 ### 最小自定义 profile
 

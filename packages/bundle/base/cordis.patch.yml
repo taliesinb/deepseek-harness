@@ -104,6 +104,11 @@
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
+    # Provider-owned OAuth and interactive-key flows commit through the same
+    # credential store. Human surfaces remain separate consumers.
+    - id: authorization
+      name: '@deepseek-ai/dsh-authorization'
+
     # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
     # models in the picker) until a `llm-pi-ai:` settings section supplies provider
     # profiles — then those routes register live, keys resolving per request
@@ -292,6 +297,9 @@
 
     - id: commands
       name: '@deepseek-ai/dsh-commands'
+
+    - id: command-authorization
+      name: '@deepseek-ai/dsh-command-authorization'
 
     - id: command-feedback
       name: '@deepseek-ai/dsh-command-feedback'

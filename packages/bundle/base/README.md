@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Every base-backed `dsh --profile` surface runs on `dsh-base`, so those surfaces share a model connection, the full tool set, durable session history, and workspace safety defaults. The shipped `sdk-minimal` profile deliberately uses a complete standalone tree instead. You rarely touch this bundle directly — shipped base-backed profiles already include it, and a custom base-backed profile names it first. When you need different defaults, change your profile patch or add a later bundle; this package is not a library you import.
+Every base-backed `dsh --profile` surface runs on `dsh-base`, so those surfaces share a model connection, provider authorization, the full tool set, durable session history, and workspace safety defaults. The shipped `sdk-minimal` profile deliberately uses a complete standalone tree instead. You rarely touch this bundle directly — shipped base-backed profiles already include it, and a custom base-backed profile names it first. When you need different defaults, change your profile patch or add a later bundle; this package is not a library you import.
 
 ## Table of Contents
 
@@ -26,6 +26,8 @@ Every base-backed `dsh --profile` surface runs on `dsh-base`, so those surfaces 
 ## Use this package
 
 You get the dsh core automatically: the shipped `web`, `headless`, `sdk`, and `acp` profiles already include it, and a custom profile names it as its first bundle. After that, everything works with no further configuration.
+
+In a Web conversation, `/oauth list` shows provider sign-in flows and `/oauth llm-pi-ai/anthropic oauth` starts Claude Pro/Max authorization. This manual command returns the authorization URL in its command card while the Host waits for the callback; see [dsh-command-authorization](../../credentials/command-authorization/README.md) for the procedure and limitations.
 
 ### A minimal custom profile
 
