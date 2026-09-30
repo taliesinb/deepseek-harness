@@ -777,6 +777,25 @@ describe('endpoint interrogation', () => {
 })
 
 describe('provider rows', () => {
+  it.each(['anthropic', 'github-copilot', 'kimi-coding', 'meta', 'openai-codex', 'openrouter', 'radius', 'xai'])(
+    'does not offer an API-key input on the %s OAuth route', async (provider) => {
+      await mountSection({ providers: {
+        [provider]: { apiKeyEnv: 'TEST_API_KEY' },
+        [`${provider}-oauth`]: {},
+      } })
+      const oauthRow = screen.getByText(`${provider}-oauth`).closest('li')!
+      fireEvent.click(within(oauthRow).getByRole('button', { name: /Edit/i }))
+      expect(within(oauthRow).queryByLabelText(en.keyInput)).toBeNull()
+      const apiRow = screen.getByText(provider).closest('li')!
+      fireEvent.click(within(apiRow).getByRole('button', { name: /Edit/i }))
+      expect(within(apiRow).getByLabelText(en.keyInput)).toBeTruthy()
+    })
+  it('keeps the key editor for a custom route whose name ends in oauth', async () => {
+    await mountSection({ providers: { 'custom-oauth': {} }, declaredRoutes: ['custom-oauth'] })
+    const row = screen.getByText('custom-oauth').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: /Edit/i }))
+    expect(within(row).getByLabelText(en.keyInput)).toBeTruthy()
+  })
   it('tags the routes the adapter declared, and only those', async () => {
     await mountSection({
       providers: {

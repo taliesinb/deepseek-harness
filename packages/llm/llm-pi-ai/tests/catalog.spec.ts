@@ -43,6 +43,24 @@ describe('pi-ai 0.87 catalog', () => {
 
 
 describe('Anthropic catalog display policy', () => {
+  it('clones catalog models for an OAuth route without changing the API-key route', () => {
+    const profiles = resolveProfiles({ anthropic: { apiKeyEnv: 'ANTHROPIC_API_KEY' }, 'anthropic-oauth': {} })
+    const api = profiles.get('anthropic')?.piProvider
+    const oauth = profiles.get('anthropic-oauth')?.piProvider
+    expect(api?.getModels().map(model => model.id)).toEqual(oauth?.getModels().map(model => model.id))
+    expect(api?.getModels()[0]?.provider).toBe('anthropic')
+    expect(oauth?.getModels()[0]?.provider).toBe('anthropic-oauth')
+    expect(oauth?.getModels().find(model => model.id === 'claude-opus-5-5')).toMatchObject({
+      contextWindow: 1_000_000,
+      maxTokens: 128_000,
+      thinkingLevelMap: { xhigh: 'xhigh', max: 'max' },
+    })
+    expect(oauth?.auth.oauth).toBeDefined()
+    expect(oauth?.auth.apiKey).toBeUndefined()
+    expect(api?.auth.apiKey).toBeDefined()
+    expect(profiles.get('anthropic-oauth')?.displayName).toBe('Anthropic OAuth')
+    expect(() => resolveProfiles({ 'anthropic-oauth': { apiKeyEnv: 'ANTHROPIC_API_KEY' } })).toThrow(/OAuth grant/)
+  })
   it('moves one numerically newest model per Claude family to the top and labels it latest', () => {
     const models = resolveProfiles({ anthropic: {} }).get('anthropic')?.piProvider?.getModels() ?? []
     const latest = models.filter(model => model.name.endsWith(' (latest)'))

@@ -27,7 +27,7 @@ Every base-backed `dsh --profile` surface runs on `dsh-base`, so those surfaces 
 
 You get the dsh core automatically: the shipped `web`, `headless`, `sdk`, and `acp` profiles already include it, and a custom profile names it as its first bundle. After that, everything works with no further configuration.
 
-In a Web conversation, `/oauth list` shows provider sign-in flows and `/oauth llm-pi-ai/anthropic oauth` starts Claude Pro/Max authorization. This manual command returns the authorization URL in its command card while the Host waits for the callback; see [dsh-command-authorization](../../credentials/command-authorization/README.md) for the procedure and limitations.
+In a Web conversation, `/oauth available` shows provider sign-in flows and `/oauth activate anthropic` starts Claude Pro/Max authorization. This manual command returns the authorization URL in its command card while the Host waits for the callback; see [dsh-command-oauth](../../credentials/command-oauth/README.md) for the procedure and limitations.
 
 ### A minimal custom profile
 

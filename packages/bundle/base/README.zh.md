@@ -27,7 +27,7 @@ kind: "package-bundle"
 
 你会自动获得 dsh 核心：随发行版交付的 `web`、`headless`、`sdk` 与 `acp` profile 已包含它，自定义 profile 则把它列为第一个组合包。之后一切无需任何额外配置即可工作。
 
-在 Web 对话中，`/oauth list` 显示提供商登录流程，`/oauth llm-pi-ai/anthropic oauth` 启动 Claude Pro/Max 授权。此手动命令会在命令卡片中返回授权 URL，同时 Host 等待回调；过程和限制见 [dsh-command-authorization](../../credentials/command-authorization/README.zh.md)。
+在 Web 对话中，`/oauth available` 显示提供商登录流程，`/oauth activate anthropic` 启动 Claude Pro/Max 授权。此手动命令会在命令卡片中返回授权 URL，同时 Host 等待回调；过程和限制见 [dsh-command-oauth](../../credentials/command-oauth/README.zh.md)。
 
 ### 最小自定义 profile
 

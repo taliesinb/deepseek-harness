@@ -43,7 +43,7 @@
     "@deepseek-ai/dsh-client-ui-cordis": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
     "@deepseek-ai/dsh-command-compact": "workspace:^",
-    "@deepseek-ai/dsh-command-authorization": "workspace:^",
+    "@deepseek-ai/dsh-command-oauth": "workspace:^",
     "@deepseek-ai/dsh-command-goal": "workspace:^",
     "@deepseek-ai/dsh-compaction-basic": "workspace:^",
     "@deepseek-ai/dsh-compaction-tool-result-pruner": "workspace:^",

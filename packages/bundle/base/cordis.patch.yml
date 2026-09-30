@@ -298,8 +298,8 @@
     - id: commands
       name: '@deepseek-ai/dsh-commands'
 
-    - id: command-authorization
-      name: '@deepseek-ai/dsh-command-authorization'
+    - id: command-oauth
+      name: '@deepseek-ai/dsh-command-oauth'
 
     - id: command-feedback
       name: '@deepseek-ai/dsh-command-feedback'

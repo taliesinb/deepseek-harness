@@ -23,7 +23,7 @@ function isMarkdownLink(value: string): boolean {
 }
 
 /** Match ordinary command-row chrome while keeping the result body permanently visible. */
-function AuthorizationCommandCard({ node }: CommandRowProps) {
+function OAuthCommandCard({ node }: CommandRowProps) {
   const state = node.outcome === null ? 'running' : node.outcome.kind === 'error' ? 'error' : 'ok'
   const result = node.outcome?.text
   return <div className="dsh-oauth-card" data-state={state}>
@@ -52,5 +52,5 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('conversation.chat.commandview', () => ctx.slots.register({
     name: 'conversation.chat.commandview',
     key: 'oauth',
-  }, AuthorizationCommandCard))
+  }, OAuthCommandCard))
 }

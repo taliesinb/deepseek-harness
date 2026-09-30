@@ -140,6 +140,7 @@ export async function removeProviderProfile(
  */
 export function needsSetup(row: ProviderRow, anyUsable: boolean): boolean {
   if (anyUsable) return false
+  if (row.entry.settingsNs === 'llm-pi-ai' && row.entry.declared !== true && row.entry.provider.endsWith('-oauth')) return false
   if (row.entry.settingsPath.length > 0) return false
   return row.credential?.configured !== true
 }
