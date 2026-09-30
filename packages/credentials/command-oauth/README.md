@@ -22,6 +22,16 @@ English | [中文](README.zh.md)
 
 Flow names omit the internal `llm-pi-ai/` credential scope and exactly one trailing `-oauth` route suffix. Only flows offering the `oauth` method are listed or invoked; API keys remain in **Settings > Models**. An explicit method must be `oauth`.
 
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 List all registered flows, optionally filtered by a case-insensitive substring:
@@ -64,25 +74,52 @@ List removable grants or delete one:
 
 Deactivation deletes the stored grant but intentionally leaves the provider route in Settings. Remove or customize that route under **Settings > Models**. Removing the route in Settings alone does not delete its stored grant; use `/oauth deactivate anthropic` to forget the subscription authorization.
 
+<a id="understand-the-implementation"></a>
 ## Understand the implementation
 
 The command delegates protocol work to `ctx.authorization`, grant storage to `ctx.credentials`, and provider-route creation to `ctx.settings`. Non-secret prerequisite text and selection prompts use the optional `ctx.userQuestions` service in the exact initiating live session. The human chooses the account, domain, or login method; no option is selected automatically. Text prompts offer an explicit **Use default (empty)** option. The 30-second browser-URL timeout pauses while a question is pending and resumes after the answer. Repeating activation reuses the pending attempt; cancellation or plugin unload aborts its question. Without an interactive question service, prerequisite prompts fail with an actionable error. Callback-capable flows may race a typed prompt against their browser callback; the command leaves a signal-bearing prompt pending until the flow withdraws it. Secret prompts are refused without displaying or logging their message.
 
 The Client half occupies the `oauth` command-card slot. It renders only the supplied arguments in the summary (`oauth · activate · anthropic`) and renders the full result below without a disclosure step. HTTP(S) results are Markdown links and therefore directly clickable. Device-flow codes remain visible with the URL, including when activation is repeated after progress notices.
 
+<a id="further-exploration"></a>
 ## Further Exploration
 
 - [Authorization](../authorization/README.md) — provider-neutral authorization flow lifecycle.
 - [Pi AI adapter](../../llm/llm-pi-ai/README.md) — provider discovery, credentials, and request dispatch.
 - [Commands](../../interaction/commands/README.md) — slash-command registration and Session bookkeeping.
 
+<a id="model-experience"></a>
 ## Model Experience
 
-The model sees neither the `/oauth` input nor OAuth notices. Authorization changes only credentials available to later requests, adds no request tokens, and does not alter an already-formed KV-cache prefix.
+### Human OAuth control
+
+#### What the model sees
+
+The `/oauth` input, prerequisite questions, and direct OAuth notices do not enter model requests. Authorization changes the credentials available to later requests.
+
+#### Token effect
+
+The command and its direct output add no model tokens.
+
+#### KV Cache effect
+
+The command does not edit conversation history or an already-formed request. Later requests follow the selected provider route's normal transport and cache behavior.
 
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - The command result persists the authorization URL and its short-lived OAuth state in the Session log; treat it as sensitive.
 - The Web page and callback browser must reach the same host's callback port.
 - Manually pasted callback codes and secret prompts require a dedicated secure authorization surface; callback-based flows wait for the browser instead.
 - Prerequisite questions require the optional user-question service and a human UI answering for the initiating live session.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This Dev Note is non-authoritative working context. A dedicated secure surface for manually pasted callback codes and secret prompts remains deferred; keep that work separate from prerequisite questions.
+
+</details>
